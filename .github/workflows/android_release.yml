@@ -2,8 +2,8 @@ name: Build and Release Android APK
 
 on:
   push:
-    tags:
-      - 'v*' # Akan otomatis berjalan ketika kamu nge-push tag (contoh: v1.0.0)
+    branches:
+      - main # Action berjalan otomatis setiap kali kamu push ke branch main
   workflow_dispatch: # Mengizinkan kamu menjalankan action ini secara manual dari GitHub UI
 
 jobs:
@@ -19,7 +19,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
-          java-version: '17' # Sesuai dengan konfigurasi build.gradle kamu (Java 17)
+          java-version: '17' # Sangat disarankan Java 17 untuk versi Gradle terbaru
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -34,8 +34,9 @@ jobs:
 
       - name: Upload Release
         uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
         with:
+          tag_name: "v1.0.${{ github.run_number }}" # Otomatis buat versi baru
+          name: "Release v1.0.${{ github.run_number }}" # Nama release otomatis
           files: build/app/outputs/flutter-apk/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
