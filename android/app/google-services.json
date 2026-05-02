@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "49018571901",
+    "project_id": "monster-cell-7cb16",
+    "storage_bucket": "monster-cell-7cb16.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:49018571901:android:17d05e0b162234ef0a3514",
+        "android_client_info": {
+          "package_name": "com.example.monster_battle_game"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA1ZaqF1nCo1bujAkPXm8gerNDSe_5XJpI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
