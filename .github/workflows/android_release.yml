@@ -10,6 +10,8 @@ jobs:
   build_and_release:
     name: Build & Release APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Wajib ditambahkan agar GitHub Actions diizinkan membuat Release
 
     steps:
       - name: Checkout Code
