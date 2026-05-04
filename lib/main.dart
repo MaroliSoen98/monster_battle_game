@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:monster_battle_game/party_screen.dart';
 import 'package:monster_battle_game/battle_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -25,6 +27,23 @@ class MonsterMove {
     this.effect,
     this.cost = 0,
   });
+
+  // Convert ke format JSON untuk disimpan
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'type': type.index,
+    'power': power,
+    'effect': effect,
+    'cost': cost,
+  };
+
+  factory MonsterMove.fromJson(Map<String, dynamic> json) => MonsterMove(
+    name: json['name'],
+    type: MoveType.values[json['type']],
+    power: json['power'],
+    effect: json['effect'],
+    cost: json['cost'],
+  );
 }
 
 // Kelas model untuk data monster
@@ -55,6 +74,35 @@ class Monster {
     this.currentExp = 0,
     required this.moves,
   }) : expToNextLevel = calculateExpForNextLevel(level);
+
+  // Convert ke format JSON untuk disimpan
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'element': element.index,
+    'imagePath': imagePath,
+    'attack': attack,
+    'defense': defense,
+    'speed': speed,
+    'stamina': stamina,
+    'hp': hp,
+    'level': level,
+    'currentExp': currentExp,
+    'moves': moves.map((m) => m.toJson()).toList(),
+  };
+
+  factory Monster.fromJson(Map<String, dynamic> json) => Monster(
+    name: json['name'],
+    element: MonsterElement.values[json['element']],
+    imagePath: json['imagePath'],
+    attack: json['attack'],
+    defense: json['defense'],
+    speed: json['speed'],
+    stamina: json['stamina'],
+    hp: json['hp'],
+    level: json['level'],
+    currentExp: json['currentExp'] ?? 0,
+    moves: (json['moves'] as List).map((m) => MonsterMove.fromJson(m)).toList(),
+  );
 
   // Fungsi untuk mendapatkan warna berdasarkan elemen
   Color get elementColor {
@@ -106,16 +154,42 @@ class Monster {
   }
 }
 
+// Class khusus untuk menangani proses Save & Load ke memori internal (Cache)
+class SaveManager {
+  static Future<void> saveParty(List<Monster> party) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String encodedData = jsonEncode(
+      party.map((m) => m.toJson()).toList(),
+    );
+    await prefs.setString('saved_party', encodedData);
+  }
+
+  static Future<List<Monster>?> loadParty() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? encodedData = prefs.getString('saved_party');
+    if (encodedData != null) {
+      final List<dynamic> decodedData = jsonDecode(encodedData);
+      return decodedData.map((m) => Monster.fromJson(m)).toList();
+    }
+    return null;
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   ); // Inisialisasi Firebase beserta konfigurasinya
-  runApp(const MyApp());
+
+  // Load data save sebelum aplikasi mulai
+  final savedParty = await SaveManager.loadParty();
+
+  runApp(MyApp(initialParty: savedParty));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final List<Monster>? initialParty;
+  const MyApp({super.key, this.initialParty});
 
   @override
   Widget build(BuildContext context) {
@@ -128,7 +202,10 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
         useMaterial3: true,
       ),
-      home: const MonsterSelectionScreen(),
+      // Jika ada save data, langsung masuk ke MainScreen (skip pilih monster)
+      home: initialParty != null && initialParty!.isNotEmpty
+          ? MainScreen(party: initialParty!)
+          : const MonsterSelectionScreen(),
       debugShowCheckedModeBanner: false,
     );
   }
@@ -214,7 +291,7 @@ class _MonsterSelectionScreenState extends State<MonsterSelectionScreen> {
           name: 'Bind',
           type: MoveType.special,
           power: 30,
-          effect: 'Bind 3 turn',
+          effect: 'Bind 1 turn',
           cost: 10,
         ),
         const MonsterMove(
@@ -275,7 +352,8 @@ class _MonsterSelectionScreenState extends State<MonsterSelectionScreen> {
         (10000 ~/ monsters.length) * monsters.length + _selectedIndex;
 
     _pageController = PageController(
-      viewportFraction: 0.6, // Perbesar kartu utama, perkecil kartu samping
+      viewportFraction:
+          0.55, // Sesuaikan fraction untuk sensitivitas geseran (swipe) carousel
       initialPage: initialPage,
     );
   }
@@ -319,6 +397,7 @@ class _MonsterSelectionScreenState extends State<MonsterSelectionScreen> {
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
+                    // 1. PageView transparan untuk menangani gesture scroll (swipe)
                     PageView.builder(
                       controller: _pageController,
                       itemCount: 20000, // Infinite scroll
@@ -328,25 +407,78 @@ class _MonsterSelectionScreenState extends State<MonsterSelectionScreen> {
                         });
                       },
                       itemBuilder: (context, index) {
-                        return AnimatedBuilder(
-                          animation: _pageController,
-                          builder: (context, child) {
-                            double value = 0.0;
-                            if (_pageController.position.haveDimensions) {
-                              value = _pageController.page! - index;
-                            }
-                            final double scale = (1 - (value.abs() * 0.3))
-                                .clamp(0.7, 1.0);
-                            return Center(
-                              child: SizedBox(
-                                height: Curves.easeOut.transform(scale) * 420,
-                                child: child,
+                        return const SizedBox.expand(); // Widget penangkap sentuhan transparan
+                      },
+                    ),
+                    // 2. Tampilan kartu 3D Carousel (menjamin kartu tengah ada di paling depan)
+                    AnimatedBuilder(
+                      animation: _pageController,
+                      builder: (context, child) {
+                        double page = _pageController.initialPage.toDouble();
+                        if (_pageController.position.haveDimensions) {
+                          page = _pageController.page ?? page;
+                        }
+
+                        int currentPage = page.floor();
+                        // Render 5 kartu terdekat dari posisi saat ini
+                        List<int> indices = [
+                          currentPage - 2,
+                          currentPage + 2,
+                          currentPage - 1,
+                          currentPage + 1,
+                          currentPage,
+                        ];
+
+                        // Urutkan berdasarkan jarak terdekat dengan tengah,
+                        // agar kartu yang di tengah di-render terakhir (z-index paling atas)
+                        indices.sort((a, b) {
+                          double distA = (page - a).abs();
+                          double distB = (page - b).abs();
+                          return distB.compareTo(distA);
+                        });
+
+                        return Stack(
+                          alignment: Alignment.center,
+                          children: indices.map((index) {
+                            double value = page - index;
+                            double clampedValue = value.clamp(-2.5, 2.5);
+
+                            // Efek mengecil untuk kartu yang di belakang
+                            final double scale =
+                                (1 - (clampedValue.abs() * 0.15)).clamp(
+                                  0.5,
+                                  1.0,
+                                );
+
+                            // Mengontrol efek tumpang tindih (overlap)
+                            final double translateX = -clampedValue * 140.0;
+
+                            // Opacity perlahan menghilang untuk kartu yang sangat jauh
+                            final double opacity =
+                                (1 - (clampedValue.abs() * 0.4)).clamp(
+                                  0.0,
+                                  1.0,
+                                );
+
+                            if (opacity == 0.0) return const SizedBox.shrink();
+
+                            return Transform.translate(
+                              offset: Offset(translateX, 0),
+                              child: Transform.scale(
+                                scale: scale,
+                                child: Opacity(
+                                  opacity: opacity,
+                                  child: SizedBox(
+                                    height: 420,
+                                    child: MonsterCard(
+                                      monster:
+                                          monsters[index % monsters.length],
+                                    ),
+                                  ),
+                                ),
                               ),
                             );
-                          },
-                          child: MonsterCard(
-                            monster: monsters[index % monsters.length],
-                          ),
+                          }).toList(),
                         );
                       },
                     ),
@@ -379,12 +511,17 @@ class _MonsterSelectionScreenState extends State<MonsterSelectionScreen> {
               ),
               // Tombol Pilih
               ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   final selectedMonster = monsters[_selectedIndex];
+                  final newParty = [selectedMonster];
+
+                  // Simpan data pertama kali dipilih ke memori internal
+                  await SaveManager.saveParty(newParty);
+
+                  if (!context.mounted) return;
                   Navigator.of(context).pushReplacement(
                     MaterialPageRoute(
-                      builder: (context) =>
-                          MainScreen(party: [selectedMonster]),
+                      builder: (context) => MainScreen(party: newParty),
                     ),
                   );
                 },
@@ -556,21 +693,52 @@ class MonsterCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    // Placeholder Gambar
+                    // Gambar Monster
                     Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(15),
-                          border: Border.all(
-                            color: Colors.black.withOpacity(0.08),
-                          ),
-                        ),
-                        child: Center(
-                          child: Text(
-                            'Gambar ${monster.name}',
-                            style: const TextStyle(color: Colors.black45),
-                          ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(
+                          16.0,
+                        ), // Padding agar gambar tidak terlalu besar
+                        child: Image.asset(
+                          monster.imagePath,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            // Template visual (placeholder) ukuran gambar
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: monster.elementColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(15),
+                                border: Border.all(
+                                  color: monster.elementColor.withOpacity(0.5),
+                                  width: 2,
+                                ),
+                              ),
+                              child: Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.pets, // Ikon jejak kaki
+                                      size: 80, // Ukuran ikon besar
+                                      color: monster.elementColor.withOpacity(
+                                        0.4,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Area Gambar\n(Maksimal Segini)',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: monster.elementColor,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ),

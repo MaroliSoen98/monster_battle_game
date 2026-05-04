@@ -356,6 +356,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
   int _lastSpecialCardTurn =
       -14; // Mulai di -14 agar bisa keluar di giliran pertama (1/15)
   int _enemyLastSpecialTurn = -14; // Cooldown untuk special move musuh (1/15)
+  int _playerConsecutiveAbsorb =
+      0; // Combo berulang untuk kartu Absorb (Player)
+  int _enemyConsecutiveAbsorb = 0; // Combo berulang untuk kartu Absorb (Enemy)
 
   @override
   void initState() {
@@ -416,8 +419,10 @@ class _WildBattleArenaState extends State<WildBattleArena>
   Map<String, dynamic> _calculateDamage(
     Monster attacker,
     Monster defender,
-    MonsterMove move,
-  ) {
+    MonsterMove move, {
+    int defenderBindTurns = 0,
+    int defenderBurnTurns = 0,
+  }) {
     final random = Random();
 
     // 1. Tentukan elemen serangan. Serangan normal tidak punya elemen.
@@ -459,11 +464,17 @@ class _WildBattleArenaState extends State<WildBattleArena>
     // 5. Modifier: Faktor Acak (0.85 - 1.00) // Diringkas
     double randomModifier = 0.85 + random.nextDouble() * 0.15;
 
+    // Defense berkurang 10% jika musuh sedang dalam status Bind
+    double effectiveDefense = defender.defense;
+    if (defenderBindTurns > 0) {
+      effectiveDefense *= 0.9;
+    }
+
     // Hitung Base Damage
     double baseDamage =
         (((2 * attacker.level / 5 + 2) *
                 move.power *
-                (attacker.attack / defender.defense)) /
+                (attacker.attack / effectiveDefense)) /
             40) + // Pembagi dikurangi agar damage lebih besar
         2;
 
@@ -474,6 +485,12 @@ class _WildBattleArenaState extends State<WildBattleArena>
         stabModifier *
         critModifier *
         randomModifier;
+
+    // Bonus damage 25% untuk serangan elemen jika musuh sedang terkena Burn
+    if (defenderBurnTurns > 0 && move.type == MoveType.elemental) {
+      finalDamageDouble *= 1.25;
+      typeLog += " (Bonus Burn +25% DMG!)";
+    }
 
     String critLog = isCritical ? " Serangan Kritis!" : "";
 
@@ -546,7 +563,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
           name: 'Bind',
           type: MoveType.special,
           power: 30,
-          effect: 'Bind 3 turn',
+          effect: 'Bind 1 turn',
           cost: 10,
         ),
       ],
@@ -706,6 +723,13 @@ class _WildBattleArenaState extends State<WildBattleArena>
       }
     }
 
+    // Lacak penggunaan Absorb berturut-turut
+    if (move.name == 'Absorb') {
+      _playerConsecutiveAbsorb++;
+    } else {
+      _playerConsecutiveAbsorb = 0;
+    }
+
     // Cek Stamina
     if (move.cost > _playerStamina) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -743,21 +767,25 @@ class _WildBattleArenaState extends State<WildBattleArena>
         widget.playerMonster,
         _enemyMonster,
         move,
+        defenderBindTurns: _enemyBindTurns,
+        defenderBurnTurns: _enemyBurnTurns,
       );
       int damage = damageResult['damage'];
       String elementalLog = damageResult['log'];
 
       // Efek Spesial
-      _enemyDamageValue = damage; // Set damage value for animation
       String effectLog = "";
       if (move.name == 'Flame Spin') {
         _enemyBurnTurns = 3;
         effectLog = " Musuh terkena Burn!";
       } else if (move.name == 'Bind') {
-        _enemyBindTurns = 3;
+        _enemyBindTurns = 1;
         effectLog = " Musuh Terikat!";
       } else if (move.name == 'Absorb') {
-        int healAmount = 5; // Fixed heal amount
+        int combo = min(_playerConsecutiveAbsorb, 3);
+        int bonus = (combo - 1) * 2;
+        damage += bonus; // Tambahkan bonus ke total damage
+        int healAmount = damage; // Heal disesuaikan dengan damage
         _playerHp = min(widget.playerMonster.hp, _playerHp + healAmount);
         effectLog = " Kamu menyerap $healAmount HP!";
       }
@@ -765,6 +793,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
         effectLog += " Kamu memulihkan ${-move.cost} stamina!";
       }
 
+      _enemyDamageValue = damage; // Set damage value setelah buff Absorb
       _oldEnemyHp = _enemyHp; // Simpan HP lama untuk animasi
       _enemyHp = max(0, _enemyHp - damage);
       _battleLog =
@@ -875,6 +904,13 @@ class _WildBattleArenaState extends State<WildBattleArena>
             _enemyLastSpecialTurn = _turnCount;
           }
 
+          // Lacak penggunaan Absorb berturut-turut musuh
+          if (chosenMove.name == 'Absorb') {
+            _enemyConsecutiveAbsorb++;
+          } else {
+            _enemyConsecutiveAbsorb = 0;
+          }
+
           _enemyStamina = min(
             _enemyMonster.stamina,
             _enemyStamina - chosenMove.cost,
@@ -890,23 +926,24 @@ class _WildBattleArenaState extends State<WildBattleArena>
               _enemyMonster,
               widget.playerMonster,
               chosenMove,
+              defenderBindTurns: _playerBindTurns,
+              defenderBurnTurns: _playerBurnTurns,
             );
             int enemyDamage = damageResult['damage'];
             String elementalLog = damageResult['log'];
-            _playerDamageValue = enemyDamage;
-
-            _oldPlayerHp = _playerHp;
-            _playerHp = max(0, _playerHp - enemyDamage);
 
             String effectLog = "";
             if (chosenMove.name == 'Flame Spin') {
-              _playerBurnTurns = 3; // Durasi 2 turn
+              _playerBurnTurns = 3;
               effectLog = " Kamu terkena Burn!";
             } else if (chosenMove.name == 'Bind') {
-              _playerBindTurns = 3; // Durasi 2 turn
+              _playerBindTurns = 1;
               effectLog = " Kamu Terikat!";
             } else if (chosenMove.name == 'Absorb') {
-              int healAmount = 5; // Fixed heal amount
+              int combo = min(_enemyConsecutiveAbsorb, 3);
+              int bonus = (combo - 1) * 2;
+              enemyDamage += bonus; // Tambahkan bonus ke total damage
+              int healAmount = enemyDamage; // Heal disesuaikan dengan damage
               _oldEnemyHp = _enemyHp;
               _enemyHp = min(_enemyMonster.hp, _enemyHp + healAmount);
               effectLog = " Musuh menyerap $healAmount HP!";
@@ -914,6 +951,10 @@ class _WildBattleArenaState extends State<WildBattleArena>
             if (chosenMove.cost < 0 && chosenMove.type != MoveType.recover) {
               effectLog += " Musuh memulihkan ${-chosenMove.cost} stamina!";
             }
+
+            _playerDamageValue = enemyDamage;
+            _oldPlayerHp = _playerHp;
+            _playerHp = max(0, _playerHp - enemyDamage);
 
             _battleLog =
                 statusLog +
@@ -978,6 +1019,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
         );
       }
     }
+
+    // Simpan progress terbaru pemain (EXP & Level) ke memori internal HP
+    SaveManager.saveParty([widget.playerMonster]);
 
     showDialog(
       context: context,
@@ -1480,7 +1524,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                 _buildStatusEffectIndicator(
                   'Burn',
                   _enemyBurnTurns,
-                  2, // Durasi 2 turn
+                  3,
                   Icons.local_fire_department,
                   Colors.orange,
                 ),
@@ -1488,7 +1532,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                 _buildStatusEffectIndicator(
                   'Bind',
                   _enemyBindTurns,
-                  2, // Durasi 2 turn
+                  1,
                   Icons.link_off,
                   Colors.blue,
                 ), // Mengganti ikon bind
@@ -1498,7 +1542,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                 _buildStatusEffectIndicator(
                   'Burn',
                   _playerBurnTurns,
-                  2, // Durasi 2 turn
+                  3,
                   Icons.local_fire_department,
                   Colors.orange,
                 ),
@@ -1506,7 +1550,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                 _buildStatusEffectIndicator(
                   'Bind',
                   _playerBindTurns,
-                  2, // Durasi 2 turn
+                  1,
                   Icons.link_off,
                   Colors.blue,
                 ),
@@ -1893,6 +1937,7 @@ class _PvPMenuScreenState extends State<PvPMenuScreen> {
             'defense': widget.party.first.defense,
             'burnTurns': 0,
             'bindTurns': 0,
+            'consecutiveAbsorb': 0,
           },
           'createdAt': FieldValue.serverTimestamp(),
         })
@@ -1986,6 +2031,7 @@ class _PvPMenuScreenState extends State<PvPMenuScreen> {
                       'defense': widget.party.first.defense,
                       'burnTurns': 0,
                       'bindTurns': 0,
+                      'consecutiveAbsorb': 0,
                     },
                   });
 
@@ -2256,10 +2302,15 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
 
     double randomModifier = 0.85 + random.nextDouble() * 0.15;
 
+    double effectiveDefense = (defender['defense'] as num).toDouble();
+    if ((defender['bindTurns'] ?? 0) > 0) {
+      effectiveDefense *= 0.9;
+    }
+
     double baseDamage =
         (((2 * (attacker['level'] as num) / 5 + 2) *
                 move.power *
-                ((attacker['attack'] as num) / (defender['defense'] as num))) /
+                ((attacker['attack'] as num) / effectiveDefense)) /
             40) +
         2;
 
@@ -2269,6 +2320,13 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
         stabModifier *
         critModifier *
         randomModifier;
+
+    // Bonus damage 25% (1/4) untuk serangan elemen jika musuh sedang terkena Burn
+    if ((defender['burnTurns'] ?? 0) > 0 && move.type == MoveType.elemental) {
+      finalDamageDouble *= 1.25;
+      typeLog += " (Bonus Burn +25% DMG!)";
+    }
+
     String critLog = isCritical ? " Serangan Kritis!" : "";
 
     return {'damage': finalDamageDouble.floor(), 'log': typeLog + critLog};
@@ -2286,6 +2344,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     int myStamina = myData['stamina'];
     int myBurn = myData['burnTurns'] ?? 0;
     int myBind = myData['bindTurns'] ?? 0;
+    int myAbsorb = myData['consecutiveAbsorb'] ?? 0;
 
     int enemyHp = enemyData['hp'];
     int enemyBurn = enemyData['burnTurns'] ?? 0;
@@ -2335,6 +2394,12 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
       }
     }
 
+    if (move.name == 'Absorb') {
+      myAbsorb++;
+    } else {
+      myAbsorb = 0;
+    }
+
     if (move.cost > myStamina) {
       ScaffoldMessenger.of(
         context,
@@ -2372,10 +2437,13 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
       enemyBurn = 3;
       effectLog = " Musuh terkena Burn!";
     } else if (move.name == 'Bind') {
-      enemyBind = 3;
+      enemyBind = 1;
       effectLog = " Musuh Terikat!";
     } else if (move.name == 'Absorb') {
-      int healAmount = 5;
+      int combo = min(myAbsorb, 3);
+      int bonus = (combo - 1) * 2;
+      damage += bonus; // Tambahkan bonus combo
+      int healAmount = damage; // Heal disesuaikan dengan damage
       myHp = min((myData['maxHp'] as num).toInt(), myHp + healAmount);
       effectLog = " Kamu menyerap $healAmount HP!";
     }
@@ -2389,6 +2457,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
       '$myRole.hp': myHp,
       '$myRole.stamina': myStamina,
       '$myRole.burnTurns': myBurn,
+      '$myRole.consecutiveAbsorb': myAbsorb,
       '$enemyRole.hp': enemyHp,
       '$enemyRole.burnTurns': enemyBurn,
       '$enemyRole.bindTurns': enemyBind,
@@ -2422,6 +2491,9 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
         );
       }
     }
+
+    // Simpan progress PvP ke memori internal HP
+    SaveManager.saveParty([widget.playerMonster]);
 
     showDialog(
       context: context,
@@ -2691,14 +2763,16 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                         : isMyTurn
                         ? Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: widget.playerMonster.moves.take(3).map((
-                              move,
+                            children: List.generate(_currentCards.length, (
+                              index,
                             ) {
-                              return GestureDetector(
-                                onTap: () => _playTurn(move, myData, enemyData),
-                                child: _buildCard(move),
+                              return _buildAnimatedCard(
+                                _currentCards[index],
+                                myData,
+                                enemyData,
+                                index,
                               );
-                            }).toList(),
+                            }),
                           )
                         : const Center(
                             child: Text(
