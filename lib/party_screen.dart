@@ -30,6 +30,12 @@ class _PartyScreenState extends State<PartyScreen> {
         return Icons.water_drop;
       case MonsterElement.Tumbuhan:
         return Icons.eco;
+      case MonsterElement.Listrik:
+        return Icons.bolt;
+      case MonsterElement.Tanah:
+        return Icons.terrain;
+      case MonsterElement.Terbang:
+        return Icons.flutter_dash;
     }
   }
 
@@ -371,6 +377,12 @@ class MonsterDetailView extends StatelessWidget {
         return Icons.water_drop;
       case MonsterElement.Tumbuhan:
         return Icons.eco;
+      case MonsterElement.Listrik:
+        return Icons.bolt;
+      case MonsterElement.Tanah:
+        return Icons.terrain;
+      case MonsterElement.Terbang:
+        return Icons.flutter_dash;
     }
   }
 
@@ -382,6 +394,12 @@ class MonsterDetailView extends StatelessWidget {
         return MonsterElement.Api;
       case MonsterElement.Tumbuhan:
         return MonsterElement.Air;
+      case MonsterElement.Listrik:
+        return MonsterElement.Air;
+      case MonsterElement.Tanah:
+        return MonsterElement.Listrik;
+      case MonsterElement.Terbang:
+        return MonsterElement.Tumbuhan;
     }
   }
 
@@ -393,6 +411,12 @@ class MonsterDetailView extends StatelessWidget {
         return MonsterElement.Tumbuhan;
       case MonsterElement.Tumbuhan:
         return MonsterElement.Api;
+      case MonsterElement.Listrik:
+        return MonsterElement.Tanah;
+      case MonsterElement.Tanah:
+        return MonsterElement.Tumbuhan;
+      case MonsterElement.Terbang:
+        return MonsterElement.Listrik;
     }
   }
 

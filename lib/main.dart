@@ -8,7 +8,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:monster_battle_game/firebase_options.dart';
 
 // Enum untuk merepresentasikan elemen monster
-enum MonsterElement { Api, Air, Tumbuhan }
+enum MonsterElement { Api, Air, Tumbuhan, Listrik, Tanah, Terbang }
 
 // Enum untuk tipe serangan (Moveset)
 enum MoveType { normal, elemental, special, recover }
@@ -113,6 +113,12 @@ class Monster {
         return Colors.blue.shade400;
       case MonsterElement.Tumbuhan:
         return Colors.green.shade400;
+      case MonsterElement.Listrik:
+        return Colors.yellow.shade600;
+      case MonsterElement.Tanah:
+        return Colors.brown.shade500;
+      case MonsterElement.Terbang:
+        return Colors.lightBlue.shade100;
     }
   }
 
@@ -372,6 +378,12 @@ class _MonsterSelectionScreenState extends State<MonsterSelectionScreen> {
         return Icons.water_drop;
       case MonsterElement.Tumbuhan:
         return Icons.eco;
+      case MonsterElement.Listrik:
+        return Icons.bolt;
+      case MonsterElement.Tanah:
+        return Icons.terrain;
+      case MonsterElement.Terbang:
+        return Icons.flutter_dash;
     }
   }
 
@@ -611,6 +623,12 @@ class MonsterCard extends StatelessWidget {
         return Icons.water_drop;
       case MonsterElement.Tumbuhan:
         return Icons.eco;
+      case MonsterElement.Listrik:
+        return Icons.bolt;
+      case MonsterElement.Tanah:
+        return Icons.terrain;
+      case MonsterElement.Terbang:
+        return Icons.flutter_dash;
     }
   }
 

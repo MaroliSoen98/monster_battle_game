@@ -287,22 +287,52 @@ class _TypewriterTextState extends State<TypewriterText> {
   }
 }
 
-// Custom Clipper untuk membuat potongan diagonal dari pojok kanan atas ke kiri bawah
-class DiagonalClipper extends CustomClipper<Path> {
+// Custom Clipper Dinamis untuk setengah layar atas (Musuh)
+class DynamicTopClipper extends CustomClipper<Path> {
+  final double morphProgress;
+  DynamicTopClipper(this.morphProgress);
+
   @override
   Path getClip(Size size) {
     final path = Path();
-    path.moveTo(size.width, 0); // Mulai dari pojok kanan atas
-    path.lineTo(0, size.height); // Garis ke pojok kiri bawah
-    path.lineTo(0, 0); // Garis ke pojok kiri atas
-    path.close(); // Tutup path kembali ke titik awal
+    final leftY = (size.height / 2) * (1 - morphProgress);
+    final rightY = (size.height / 2) + (size.height / 2) * morphProgress;
+
+    path.moveTo(0, 0);
+    path.lineTo(size.width, 0);
+    path.lineTo(size.width, rightY);
+    path.lineTo(0, leftY);
+    path.close();
     return path;
   }
 
   @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) {
-    return false;
+  bool shouldReclip(DynamicTopClipper oldClipper) =>
+      morphProgress != oldClipper.morphProgress;
+}
+
+// Custom Clipper Dinamis untuk setengah layar bawah (Pemain)
+class DynamicBottomClipper extends CustomClipper<Path> {
+  final double morphProgress;
+  DynamicBottomClipper(this.morphProgress);
+
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    final leftY = (size.height / 2) * (1 - morphProgress);
+    final rightY = (size.height / 2) + (size.height / 2) * morphProgress;
+
+    path.moveTo(0, leftY);
+    path.lineTo(size.width, rightY);
+    path.lineTo(size.width, size.height);
+    path.lineTo(0, size.height);
+    path.close();
+    return path;
   }
+
+  @override
+  bool shouldReclip(DynamicBottomClipper oldClipper) =>
+      morphProgress != oldClipper.morphProgress;
 }
 
 // ============================================================================
@@ -323,7 +353,7 @@ class WildBattleArena extends StatefulWidget {
 }
 
 class _WildBattleArenaState extends State<WildBattleArena>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late Monster _enemyMonster;
 
   // Status HP
@@ -341,6 +371,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
   // Untuk animasi damage
   late AnimationController _cardAnimationController;
   late Animation<double> _cardAnimation;
+  late AnimationController _clashController;
+  late AnimationController _playerShakeController;
+  late AnimationController _enemyShakeController;
 
   int _playerDamageValue = 0;
   int _enemyDamageValue = 0;
@@ -350,6 +383,10 @@ class _WildBattleArenaState extends State<WildBattleArena>
   int _enemyBindTurns = 0;
   int _playerBurnTurns = 0;
   int _playerBindTurns = 0;
+  int _playerInvulnerableTurns = 0;
+  int _enemyInvulnerableTurns = 0;
+  int _playerParalysisTurns = 0;
+  int _enemyParalysisTurns = 0;
 
   // Cooldown untuk kartu spesial
   int _turnCount = 1;
@@ -374,17 +411,35 @@ class _WildBattleArenaState extends State<WildBattleArena>
       vsync: this,
       duration: const Duration(milliseconds: 1500), // Perpanjang durasi total
     );
+    _clashController = AnimationController(
+      vsync: this,
+      duration: const Duration(
+        milliseconds: 1400,
+      ), // Diperlama untuk 2 fase animasi
+    );
+    _playerShakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _enemyShakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
     _cardAnimation = CurvedAnimation(
       parent: _cardAnimationController,
       curve: Curves.easeOut,
     );
     _cardAnimationController.forward();
+    _clashController.forward();
     _drawCards();
   }
 
   @override
   void dispose() {
     _cardAnimationController.dispose();
+    _clashController.dispose();
+    _playerShakeController.dispose();
+    _enemyShakeController.dispose();
     super.dispose();
   }
 
@@ -396,6 +451,12 @@ class _WildBattleArenaState extends State<WildBattleArena>
         return Icons.water_drop;
       case MonsterElement.Tumbuhan:
         return Icons.eco;
+      case MonsterElement.Listrik:
+        return Icons.bolt;
+      case MonsterElement.Tanah:
+        return Icons.terrain;
+      case MonsterElement.Terbang:
+        return Icons.flutter_dash;
     }
   }
 
@@ -405,14 +466,34 @@ class _WildBattleArenaState extends State<WildBattleArena>
             defender == MonsterElement.Tumbuhan) ||
         (attacker == MonsterElement.Tumbuhan &&
             defender == MonsterElement.Air) ||
-        (attacker == MonsterElement.Air && defender == MonsterElement.Api);
+        (attacker == MonsterElement.Air && defender == MonsterElement.Api) ||
+        (attacker == MonsterElement.Listrik &&
+            (defender == MonsterElement.Air ||
+                defender == MonsterElement.Terbang)) ||
+        (attacker == MonsterElement.Tanah &&
+            (defender == MonsterElement.Api ||
+                defender == MonsterElement.Listrik)) ||
+        (attacker == MonsterElement.Terbang &&
+            defender == MonsterElement.Tumbuhan);
   }
 
   bool _isNotVeryEffective(MonsterElement attacker, MonsterElement defender) {
     return (attacker == MonsterElement.Api && defender == MonsterElement.Air) ||
         (attacker == MonsterElement.Tumbuhan &&
             defender == MonsterElement.Api) ||
-        (attacker == MonsterElement.Air && defender == MonsterElement.Tumbuhan);
+        (attacker == MonsterElement.Air &&
+            defender == MonsterElement.Tumbuhan) ||
+        (attacker == MonsterElement.Listrik &&
+            defender == MonsterElement.Tanah) ||
+        (attacker == MonsterElement.Tanah &&
+            defender == MonsterElement.Tumbuhan) ||
+        (attacker == MonsterElement.Terbang &&
+            defender == MonsterElement.Listrik);
+  }
+
+  bool _isNoEffect(MonsterElement attacker, MonsterElement defender) {
+    return (attacker == MonsterElement.Tanah &&
+        defender == MonsterElement.Terbang);
   }
 
   // Menghitung damage berdasarkan formula baru
@@ -422,13 +503,29 @@ class _WildBattleArenaState extends State<WildBattleArena>
     MonsterMove move, {
     int defenderBindTurns = 0,
     int defenderBurnTurns = 0,
+    int defenderInvulnerableTurns = 0,
   }) {
+    if (defenderInvulnerableTurns > 0 && move.type != MoveType.recover) {
+      return {'damage': 0, 'log': ' Serangan meleset (Invulnerable)!'};
+    }
+
     final random = Random();
+
+    // 10% evasion for Flying type
+    if (defender.element == MonsterElement.Terbang &&
+        random.nextInt(100) < 10 &&
+        move.type != MoveType.recover) {
+      return {'damage': 0, 'log': ' Serangan berhasil dihindari (Evasiness)!'};
+    }
 
     // 1. Tentukan elemen serangan. Serangan normal tidak punya elemen.
     MonsterElement? moveElement;
     if (move.type == MoveType.elemental || move.type == MoveType.special) {
       moveElement = attacker.element;
+    }
+
+    if (moveElement != null && _isNoEffect(moveElement, defender.element)) {
+      return {'damage': 0, 'log': ' Tidak ada efek pada tipe ini!'};
     }
 
     // 2. Modifier: Keunggulan Tipe
@@ -486,10 +583,14 @@ class _WildBattleArenaState extends State<WildBattleArena>
         critModifier *
         randomModifier;
 
-    // Bonus damage 25% untuk serangan elemen jika musuh sedang terkena Burn
+    // Bonus damage 10% untuk serangan elemen jika musuh sedang terkena Burn
     if (defenderBurnTurns > 0 && move.type == MoveType.elemental) {
-      finalDamageDouble *= 1.25;
-      typeLog += " (Bonus Burn +25% DMG!)";
+      finalDamageDouble *= 1.1;
+      typeLog += " (Bonus Burn +10% DMG!)";
+      if (moveElement == MonsterElement.Api) {
+        finalDamageDouble += 2;
+        typeLog += " (+2 DMG Api!)";
+      }
     }
 
     String critLog = isCritical ? " Serangan Kritis!" : "";
@@ -504,130 +605,393 @@ class _WildBattleArenaState extends State<WildBattleArena>
       MonsterElement.Api,
       MonsterElement.Air,
       MonsterElement.Tumbuhan,
+      MonsterElement.Listrik,
+      MonsterElement.Tanah,
+      MonsterElement.Terbang,
     ];
-    final images = [
-      'assets/images/fire_monster.png',
-      'assets/images/water_monster.png',
-      'assets/images/plant_monster.png',
-    ];
-    final movesets = [
-      // Api
-      [
-        const MonsterMove(
-          name: 'Focus',
-          type: MoveType.recover,
-          power: 0,
-          cost: -15,
-        ),
-        const MonsterMove(
-          name: 'Scratch',
-          type: MoveType.normal,
-          power: 40,
-          cost: -7,
-        ),
-        const MonsterMove(
-          name: 'Ember',
-          type: MoveType.elemental,
-          power: 50,
-          cost: 10,
-        ),
-        const MonsterMove(
-          name: 'Flame Spin',
-          type: MoveType.special,
-          power: 45,
-          effect: 'Burn 3 turn',
-          cost: 10,
-        ),
-      ],
-      // Air
-      [
-        const MonsterMove(
-          name: 'Focus',
-          type: MoveType.recover,
-          power: 0,
-          cost: -15,
-        ),
-        const MonsterMove(
-          name: 'Pound',
-          type: MoveType.normal,
-          power: 40,
-          cost: -7,
-        ),
-        const MonsterMove(
-          name: 'Bubble',
-          type: MoveType.elemental,
-          power: 45,
-          cost: 10,
-        ),
-        const MonsterMove(
-          name: 'Bind',
-          type: MoveType.special,
-          power: 30,
-          effect: 'Bind 1 turn',
-          cost: 10,
-        ),
-      ],
-      // Tumbuhan
-      [
-        const MonsterMove(
-          name: 'Focus',
-          type: MoveType.recover,
-          power: 0,
-          cost: -15,
-        ),
-        const MonsterMove(
-          name: 'Tackle',
-          type: MoveType.normal,
-          power: 40,
-          cost: -7,
-        ),
-        const MonsterMove(
-          name: 'Vine Whip',
-          type: MoveType.elemental,
-          power: 40,
-          cost: 10,
-        ),
-        const MonsterMove(
-          name: 'Absorb',
-          type: MoveType.special,
-          power: 20,
-          effect: 'Drain HP & Heal',
-          cost: 10,
-        ),
-      ],
-    ];
-    final names = ['Wild Ignis', 'Wild Aqua', 'Wild Flora'];
-    final rIndex = random.nextInt(3);
+    final rIndex = random.nextInt(6);
+    final selectedElement = elements[rIndex];
     final enemyLevel = max(
       1,
       widget.playerMonster.level + random.nextInt(3) - 1,
     );
 
-    // Base stats berbeda per elemen untuk menciptakan arketipe
+    String monsterName = "";
+    String imagePath = "";
+    List<MonsterMove> generatedMoves = [];
     int baseHp;
     double baseAttack;
     double baseDefense;
     int baseSpeed;
     int baseStamina = 50; // Stamina konsisten
 
-    switch (elements[rIndex]) {
+    // Kumpulan Nama Attack Umum
+    List<String> normalMoveNames = [
+      'Pound',
+      'Scratch',
+      'Tackle',
+      'Swift',
+      'Strike',
+      'Slam',
+      'Dash',
+      'Hit',
+      'Bash',
+    ];
+    List<String> recoverMoveNames = [
+      'Focus',
+      'Rest',
+      'Meditate',
+      'Charge',
+      'Gather',
+      'Heal',
+      'Calm',
+    ];
+    String randomNormal =
+        normalMoveNames[random.nextInt(normalMoveNames.length)];
+    String randomRecover =
+        recoverMoveNames[random.nextInt(recoverMoveNames.length)];
+
+    switch (selectedElement) {
       case MonsterElement.Api:
+        List<String> names = [
+          'Ignis',
+          'Pyre',
+          'Blaze',
+          'Inferno',
+          'Cinder',
+          'Flare',
+        ];
+        monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        imagePath = 'assets/images/fire_monster.png';
         baseHp = 60;
         baseAttack = 75;
         baseDefense = 55;
         baseSpeed = 65;
+
+        List<String> elMoves = [
+          'Ember',
+          'Fireball',
+          'Flame Burst',
+          'Heat Wave',
+          'Scorcher',
+        ];
+        List<String> spMoves = [
+          'Flame Spin',
+          'Fire Spin',
+          'Inferno',
+          'Burn Blast',
+          'Blaze Bind',
+        ];
+        generatedMoves = [
+          MonsterMove(
+            name: randomRecover,
+            type: MoveType.recover,
+            power: 0,
+            cost: -15,
+          ),
+          MonsterMove(
+            name: randomNormal,
+            type: MoveType.normal,
+            power: 40,
+            cost: -7,
+          ),
+          MonsterMove(
+            name: elMoves[random.nextInt(elMoves.length)],
+            type: MoveType.elemental,
+            power: 50,
+            cost: 10,
+          ),
+          MonsterMove(
+            name: spMoves[random.nextInt(spMoves.length)],
+            type: MoveType.special,
+            power: 45,
+            effect: 'Burn 3 turn',
+            cost: 10,
+          ),
+        ];
         break;
       case MonsterElement.Air: // Represents Water/Air type
+        List<String> names = [
+          'Aqua',
+          'Hydro',
+          'Tide',
+          'Splash',
+          'Ripple',
+          'Wave',
+        ];
+        monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        imagePath = 'assets/images/water_monster.png';
         baseHp = 65;
         baseAttack = 60;
         baseDefense = 60;
         baseSpeed = 70;
+
+        List<String> elMoves = [
+          'Bubble',
+          'Water Gun',
+          'Aqua Jet',
+          'Splash Hit',
+          'Tidal Wave',
+        ];
+        List<String> spMoves = [
+          'Bind',
+          'Water Whip',
+          'Whirlpool',
+          'Aqua Bind',
+          'Tsunami Hold',
+        ];
+        generatedMoves = [
+          MonsterMove(
+            name: randomRecover,
+            type: MoveType.recover,
+            power: 0,
+            cost: -15,
+          ),
+          MonsterMove(
+            name: randomNormal,
+            type: MoveType.normal,
+            power: 40,
+            cost: -7,
+          ),
+          MonsterMove(
+            name: elMoves[random.nextInt(elMoves.length)],
+            type: MoveType.elemental,
+            power: 45,
+            cost: 10,
+          ),
+          MonsterMove(
+            name: spMoves[random.nextInt(spMoves.length)],
+            type: MoveType.special,
+            power: 30,
+            effect: 'Bind 1 turn',
+            cost: 10,
+          ),
+        ];
         break;
       case MonsterElement.Tumbuhan:
+        List<String> names = [
+          'Flora',
+          'Leaf',
+          'Vine',
+          'Thorn',
+          'Root',
+          'Petal',
+        ];
+        monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        imagePath = 'assets/images/plant_monster.png';
         baseHp = 70;
         baseAttack = 55;
         baseDefense = 75;
         baseSpeed = 60;
+
+        List<String> elMoves = [
+          'Vine Whip',
+          'Razor Leaf',
+          'Seed Bomb',
+          'Leaf Strike',
+          'Nature Hit',
+        ];
+        List<String> spMoves = [
+          'Absorb',
+          'Mega Drain',
+          'Leech Seed',
+          'Giga Drain',
+          'Life Siphon',
+        ];
+        generatedMoves = [
+          MonsterMove(
+            name: randomRecover,
+            type: MoveType.recover,
+            power: 0,
+            cost: -15,
+          ),
+          MonsterMove(
+            name: randomNormal,
+            type: MoveType.normal,
+            power: 40,
+            cost: -7,
+          ),
+          MonsterMove(
+            name: elMoves[random.nextInt(elMoves.length)],
+            type: MoveType.elemental,
+            power: 40,
+            cost: 10,
+          ),
+          MonsterMove(
+            name: spMoves[random.nextInt(spMoves.length)],
+            type: MoveType.special,
+            power: 20,
+            effect: 'Drain HP & Heal',
+            cost: 10,
+          ),
+        ];
+        break;
+      case MonsterElement.Listrik:
+        List<String> names = [
+          'Volt',
+          'Spark',
+          'Zap',
+          'Blitz',
+          'Thunder',
+          'Jolt',
+        ];
+        monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        imagePath = 'assets/images/electric_monster.png';
+        baseHp = 55;
+        baseAttack = 70;
+        baseDefense = 50;
+        baseSpeed = 90;
+
+        List<String> elMoves = [
+          'Electric Shock',
+          'Thunder Shock',
+          'Spark',
+          'Lightning Strike',
+          'Volt Tackle',
+        ];
+        List<String> spMoves = [
+          'Paralysis',
+          'Thunder Wave',
+          'Static',
+          'Stun Volt',
+          'Shock Trap',
+        ];
+        generatedMoves = [
+          MonsterMove(
+            name: randomRecover,
+            type: MoveType.recover,
+            power: 0,
+            cost: -15,
+          ),
+          MonsterMove(
+            name: randomNormal,
+            type: MoveType.normal,
+            power: 40,
+            cost: -7,
+          ),
+          MonsterMove(
+            name: elMoves[random.nextInt(elMoves.length)],
+            type: MoveType.elemental,
+            power: 50,
+            cost: 10,
+          ),
+          MonsterMove(
+            name: spMoves[random.nextInt(spMoves.length)],
+            type: MoveType.special,
+            power: 30,
+            effect: 'Paralysis 1 turn',
+            cost: 10,
+          ),
+        ];
+        break;
+      case MonsterElement.Tanah:
+        List<String> names = ['Terra', 'Rock', 'Quake', 'Dust', 'Mud', 'Stone'];
+        monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        imagePath = 'assets/images/ground_monster.png';
+        baseHp = 80;
+        baseAttack = 60;
+        baseDefense = 85;
+        baseSpeed = 45;
+
+        List<String> elMoves = [
+          'Rock Tomb',
+          'Mud Slap',
+          'Rock Throw',
+          'Earth Tremor',
+          'Sand Attack',
+        ];
+        List<String> spMoves = [
+          'Grounding',
+          'Dig',
+          'Burrow',
+          'Sand Hide',
+          'Earth Shield',
+        ];
+        generatedMoves = [
+          MonsterMove(
+            name: randomRecover,
+            type: MoveType.recover,
+            power: 0,
+            cost: -15,
+          ),
+          MonsterMove(
+            name: randomNormal,
+            type: MoveType.normal,
+            power: 40,
+            cost: -7,
+          ),
+          MonsterMove(
+            name: elMoves[random.nextInt(elMoves.length)],
+            type: MoveType.elemental,
+            power: 50,
+            cost: 10,
+          ),
+          MonsterMove(
+            name: spMoves[random.nextInt(spMoves.length)],
+            type: MoveType.special,
+            power: 20,
+            effect: 'Miss 2 turn',
+            cost: 15,
+          ),
+        ];
+        break;
+      case MonsterElement.Terbang:
+        List<String> names = [
+          'Aero',
+          'Zephyr',
+          'Wind',
+          'Gale',
+          'Sky',
+          'Breeze',
+        ];
+        monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        imagePath = 'assets/images/flying_monster.png';
+        baseHp = 60;
+        baseAttack = 65;
+        baseDefense = 60;
+        baseSpeed = 80;
+
+        List<String> elMoves = [
+          'Air Cut',
+          'Gust',
+          'Wind Strike',
+          'Aero Slash',
+          'Breeze Hit',
+        ];
+        List<String> spMoves = [
+          'Fly Away',
+          'Fly',
+          'Sky Drop',
+          'Cloud Hide',
+          'High Hover',
+        ];
+        generatedMoves = [
+          MonsterMove(
+            name: randomRecover,
+            type: MoveType.recover,
+            power: 0,
+            cost: -15,
+          ),
+          MonsterMove(
+            name: randomNormal,
+            type: MoveType.normal,
+            power: 40,
+            cost: -7,
+          ),
+          MonsterMove(
+            name: elMoves[random.nextInt(elMoves.length)],
+            type: MoveType.elemental,
+            power: 45,
+            cost: 10,
+          ),
+          MonsterMove(
+            name: spMoves[random.nextInt(spMoves.length)],
+            type: MoveType.special,
+            power: 40,
+            effect: 'Miss 1 turn',
+            cost: 15,
+          ),
+        ];
         break;
     }
 
@@ -639,16 +1003,16 @@ class _WildBattleArenaState extends State<WildBattleArena>
     int stamina = baseStamina + ((enemyLevel - 1) * 5);
 
     return Monster(
-      name: names[rIndex],
-      element: elements[rIndex],
-      imagePath: images[rIndex],
+      name: monsterName,
+      element: selectedElement,
+      imagePath: imagePath,
       attack: attack,
       defense: defense,
       speed: speed,
       stamina: stamina,
       hp: hp,
       level: enemyLevel,
-      moves: movesets[rIndex],
+      moves: generatedMoves,
     );
   }
 
@@ -699,10 +1063,19 @@ class _WildBattleArenaState extends State<WildBattleArena>
     if (!_isPlayerTurn) return;
 
     // --- Handle Player Status Effects ---
-    if (_playerBindTurns > 0) {
+    if (_playerInvulnerableTurns > 0) {
+      _playerInvulnerableTurns--;
+    }
+
+    if (_playerBindTurns > 0 || _playerParalysisTurns > 0) {
       setState(() {
-        _playerBindTurns--;
-        _battleLog = "Kamu tidak bisa bergerak karena Terikat!";
+        if (_playerBindTurns > 0) {
+          _playerBindTurns--;
+          _battleLog = "Kamu tidak bisa bergerak karena Terikat!";
+        } else {
+          _playerParalysisTurns--;
+          _battleLog = "Kamu tidak bisa bergerak karena Paralysis!";
+        }
         _isPlayerTurn = false;
       });
       _enemyTurn();
@@ -713,9 +1086,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
     if (_playerBurnTurns > 0) {
       setState(() {
         _oldPlayerHp = _playerHp; // Simpan HP lama untuk animasi
-        _playerHp = max(0, _playerHp - 1);
+        _playerHp = max(0, _playerHp - 5);
         _playerBurnTurns--;
-        statusLog = "Kamu terkena damage Burn. ";
+        statusLog = "Kamu terkena 5 damage Burn! ";
       });
       if (_playerHp == 0) {
         _showEndGameDialog(false);
@@ -724,7 +1097,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
     }
 
     // Lacak penggunaan Absorb berturut-turut
-    if (move.name == 'Absorb') {
+    if (move.name == 'Absorb' || move.effect == 'Drain HP & Heal') {
       _playerConsecutiveAbsorb++;
     } else {
       _playerConsecutiveAbsorb = 0;
@@ -769,19 +1142,30 @@ class _WildBattleArenaState extends State<WildBattleArena>
         move,
         defenderBindTurns: _enemyBindTurns,
         defenderBurnTurns: _enemyBurnTurns,
+        defenderInvulnerableTurns: _enemyInvulnerableTurns,
       );
       int damage = damageResult['damage'];
       String elementalLog = damageResult['log'];
 
       // Efek Spesial
       String effectLog = "";
-      if (move.name == 'Flame Spin') {
+      if (move.name == 'Flame Spin' || move.effect == 'Burn 3 turn') {
         _enemyBurnTurns = 3;
         effectLog = " Musuh terkena Burn!";
-      } else if (move.name == 'Bind') {
+      } else if (move.name == 'Bind' || move.effect == 'Bind 1 turn') {
         _enemyBindTurns = 1;
         effectLog = " Musuh Terikat!";
-      } else if (move.name == 'Absorb') {
+      } else if (move.name == 'Paralysis' ||
+          move.effect == 'Paralysis 1 turn') {
+        _enemyParalysisTurns = 1;
+        effectLog = " Musuh terkena Paralysis!";
+      } else if (move.name == 'Grounding' || move.effect == 'Miss 2 turn') {
+        _playerInvulnerableTurns = 2;
+        effectLog = " Kamu bersembunyi (Invulnerable 2 Turn)!";
+      } else if (move.name == 'Fly Away' || move.effect == 'Miss 1 turn') {
+        _playerInvulnerableTurns = 1;
+        effectLog = " Kamu terbang tinggi (Invulnerable 1 Turn)!";
+      } else if (move.name == 'Absorb' || move.effect == 'Drain HP & Heal') {
         int combo = min(_playerConsecutiveAbsorb, 3);
         int bonus = (combo - 1) * 2;
         damage += bonus; // Tambahkan bonus ke total damage
@@ -796,6 +1180,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
       _enemyDamageValue = damage; // Set damage value setelah buff Absorb
       _oldEnemyHp = _enemyHp; // Simpan HP lama untuk animasi
       _enemyHp = max(0, _enemyHp - damage);
+      if (damage > 0) {
+        _enemyShakeController.forward(from: 0.0);
+      }
       _battleLog =
           statusLog +
           "${widget.playerMonster.name} menggunakan ${move.name}!$elementalLog$effectLog";
@@ -817,11 +1204,15 @@ class _WildBattleArenaState extends State<WildBattleArena>
         String statusLog = "";
         int actualEnemyDamage = 0;
 
+        if (_enemyInvulnerableTurns > 0) {
+          _enemyInvulnerableTurns--;
+        }
+
         // Cek efek Burn
         if (_enemyBurnTurns > 0) {
-          _enemyHp = max(0, _enemyHp - 1);
+          _enemyHp = max(0, _enemyHp - 5);
           _enemyBurnTurns--;
-          statusLog = "Musuh terkena damage Burn. ";
+          statusLog = "Musuh terkena 5 damage Burn! ";
         }
 
         if (_enemyHp == 0) {
@@ -831,11 +1222,18 @@ class _WildBattleArenaState extends State<WildBattleArena>
         }
 
         // Cek efek Bind
-        if (_enemyBindTurns > 0) {
-          _enemyBindTurns--;
-          _battleLog =
-              statusLog +
-              "${_enemyMonster.name} terikat dan tidak bisa bergerak!";
+        if (_enemyBindTurns > 0 || _enemyParalysisTurns > 0) {
+          if (_enemyBindTurns > 0) {
+            _enemyBindTurns--;
+            _battleLog =
+                statusLog +
+                "${_enemyMonster.name} terikat dan tidak bisa bergerak!";
+          } else {
+            _enemyParalysisTurns--;
+            _battleLog =
+                statusLog +
+                "${_enemyMonster.name} terkena Paralysis dan tidak bisa bergerak!";
+          }
           _nextPlayerTurn();
           return;
         }
@@ -905,7 +1303,8 @@ class _WildBattleArenaState extends State<WildBattleArena>
           }
 
           // Lacak penggunaan Absorb berturut-turut musuh
-          if (chosenMove.name == 'Absorb') {
+          if (chosenMove.name == 'Absorb' ||
+              chosenMove.effect == 'Drain HP & Heal') {
             _enemyConsecutiveAbsorb++;
           } else {
             _enemyConsecutiveAbsorb = 0;
@@ -928,18 +1327,34 @@ class _WildBattleArenaState extends State<WildBattleArena>
               chosenMove,
               defenderBindTurns: _playerBindTurns,
               defenderBurnTurns: _playerBurnTurns,
+              defenderInvulnerableTurns: _playerInvulnerableTurns,
             );
             int enemyDamage = damageResult['damage'];
             String elementalLog = damageResult['log'];
 
             String effectLog = "";
-            if (chosenMove.name == 'Flame Spin') {
+            if (chosenMove.name == 'Flame Spin' ||
+                chosenMove.effect == 'Burn 3 turn') {
               _playerBurnTurns = 3;
               effectLog = " Kamu terkena Burn!";
-            } else if (chosenMove.name == 'Bind') {
+            } else if (chosenMove.name == 'Bind' ||
+                chosenMove.effect == 'Bind 1 turn') {
               _playerBindTurns = 1;
               effectLog = " Kamu Terikat!";
-            } else if (chosenMove.name == 'Absorb') {
+            } else if (chosenMove.name == 'Paralysis' ||
+                chosenMove.effect == 'Paralysis 1 turn') {
+              _playerParalysisTurns = 1;
+              effectLog = " Kamu terkena Paralysis!";
+            } else if (chosenMove.name == 'Grounding' ||
+                chosenMove.effect == 'Miss 2 turn') {
+              _enemyInvulnerableTurns = 2;
+              effectLog = " Musuh bersembunyi (Invulnerable 2 Turn)!";
+            } else if (chosenMove.name == 'Fly Away' ||
+                chosenMove.effect == 'Miss 1 turn') {
+              _enemyInvulnerableTurns = 1;
+              effectLog = " Musuh terbang tinggi (Invulnerable 1 Turn)!";
+            } else if (chosenMove.name == 'Absorb' ||
+                chosenMove.effect == 'Drain HP & Heal') {
               int combo = min(_enemyConsecutiveAbsorb, 3);
               int bonus = (combo - 1) * 2;
               enemyDamage += bonus; // Tambahkan bonus ke total damage
@@ -955,6 +1370,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
             _playerDamageValue = enemyDamage;
             _oldPlayerHp = _playerHp;
             _playerHp = max(0, _playerHp - enemyDamage);
+            if (enemyDamage > 0) {
+              _playerShakeController.forward(from: 0.0);
+            }
 
             _battleLog =
                 statusLog +
@@ -1231,12 +1649,11 @@ class _WildBattleArenaState extends State<WildBattleArena>
               duration: const Duration(milliseconds: 1200),
               curve: Curves.easeOutCubic,
               builder: (context, value, child) {
-                final isDouble = oldValue is double || newValue is double;
                 return Row(
                   mainAxisAlignment: MainAxisAlignment.end, // Rata kanan
                   children: [
                     Text(
-                      value.toStringAsFixed(isDouble ? 1 : 0),
+                      value.toInt().toString(),
                       style: const TextStyle(
                         color: Colors.green,
                         fontWeight: FontWeight.bold,
@@ -1253,7 +1670,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                         milliseconds: 300,
                       ), // Durasi fade out
                       child: Text(
-                        '(+${increase.toStringAsFixed(increase is double ? 1 : 0)})',
+                        '(+${increase.toInt()})',
                         style: const TextStyle(
                           color: Colors.green,
                           fontSize: 12,
@@ -1273,6 +1690,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
     return Scaffold(
       backgroundColor: const Color(0xFFE0F7FA), // Warna biru langit cerah
       body: SafeArea(
@@ -1283,44 +1701,82 @@ class _WildBattleArenaState extends State<WildBattleArena>
               flex: 5,
               child: Stack(
                 children: [
-                  // Latar Belakang Split Screen Diagonal
+                  // Animasi Clash Layar Diagonal
                   Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topRight,
-                          end: Alignment.bottomLeft,
-                          stops: const [0.495, 0.495, 0.505, 0.505],
-                          colors: [
-                            _enemyMonster.elementColor.withOpacity(0.6),
-                            Colors.white,
-                            Colors.white,
-                            widget.playerMonster.elementColor.withOpacity(0.6),
+                    child: AnimatedBuilder(
+                      animation: _clashController,
+                      builder: (context, child) {
+                        final linearValue = _clashController.value;
+                        // 40% Waktu pertama: Meluncur sebagai persegi dari Atas & Bawah
+                        final slideProgress = Curves.easeOut.transform(
+                          (linearValue / 0.4).clamp(0.0, 1.0),
+                        );
+                        // 60% Waktu sisanya: Membelah perlahan menjadi segitiga diagonal
+                        final morphProgress = Curves.easeOutBack.transform(
+                          ((linearValue - 0.4) / 0.6).clamp(0.0, 1.0),
+                        );
+
+                        final slideYTop =
+                            -(size.height / 2) * (1 - slideProgress);
+                        final slideYBottom =
+                            (size.height / 2) * (1 - slideProgress);
+
+                        return Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            // Sisi Musuh (Top)
+                            Transform.translate(
+                              offset: Offset(0, slideYTop),
+                              child: ClipPath(
+                                clipper: DynamicTopClipper(morphProgress),
+                                child: Container(
+                                  color: _enemyMonster.elementColor,
+                                  child: Stack(
+                                    children: [
+                                      Positioned(
+                                        top: -40,
+                                        right: -40,
+                                        child: Icon(
+                                          _getElementIcon(
+                                            _enemyMonster.element,
+                                          ),
+                                          size: 250,
+                                          color: Colors.white.withOpacity(0.1),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Sisi Pemain (Bottom)
+                            Transform.translate(
+                              offset: Offset(0, slideYBottom),
+                              child: ClipPath(
+                                clipper: DynamicBottomClipper(morphProgress),
+                                child: Container(
+                                  color: widget.playerMonster.elementColor,
+                                  child: Stack(
+                                    children: [
+                                      Positioned(
+                                        bottom: -40,
+                                        left: -40,
+                                        child: Icon(
+                                          _getElementIcon(
+                                            widget.playerMonster.element,
+                                          ),
+                                          size: 250,
+                                          color: Colors.white.withOpacity(0.1),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
                           ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // Watermark Elemen Musuh
-                  Positioned(
-                    top: -40,
-                    right: -40,
-                    child: Icon(
-                      _getElementIcon(_enemyMonster.element),
-                      size: 250,
-                      color: Colors.white.withOpacity(0.1),
-                    ),
-                  ),
-
-                  // Watermark Elemen Player
-                  Positioned(
-                    bottom: -40,
-                    left: -40,
-                    child: Icon(
-                      _getElementIcon(widget.playerMonster.element),
-                      size: 250,
-                      color: Colors.white.withOpacity(0.1),
+                        );
+                      },
                     ),
                   ),
 
@@ -1477,6 +1933,24 @@ class _WildBattleArenaState extends State<WildBattleArena>
     );
   }
 
+  // Widget Bantuan: Animasi Goyang (Shake)
+  Widget _buildShakeAnimator({
+    required AnimationController controller,
+    required Widget child,
+  }) {
+    return AnimatedBuilder(
+      animation: controller,
+      child: child,
+      builder: (context, child) {
+        final sineValue = sin(pi * 4 * controller.value); // 2 full shakes
+        return Transform.translate(
+          offset: Offset(sineValue * 8, 0), // Goyang 8 pixel kiri-kanan
+          child: child,
+        );
+      },
+    );
+  }
+
   // Widget Bantuan: Membangun satu sisi arena (Pemain atau Musuh)
   Widget _buildArenaSide({
     required bool isEnemy,
@@ -1511,12 +1985,17 @@ class _WildBattleArenaState extends State<WildBattleArena>
             ),
             const SizedBox(height: 16),
             // Health Bar
-            _buildHealthBar(
-              monster,
-              currentHp,
-              monster.hp,
-              currentStamina ?? monster.stamina,
-              isEnemy: isEnemy,
+            _buildShakeAnimator(
+              controller: isEnemy
+                  ? _enemyShakeController
+                  : _playerShakeController,
+              child: _buildHealthBar(
+                monster,
+                currentHp,
+                monster.hp,
+                currentStamina ?? monster.stamina,
+                isEnemy: isEnemy,
+              ),
             ),
             // Indikator Status Efek
             if (isEnemy) ...[
@@ -1536,6 +2015,22 @@ class _WildBattleArenaState extends State<WildBattleArena>
                   Icons.link_off,
                   Colors.blue,
                 ), // Mengganti ikon bind
+              if (_enemyInvulnerableTurns > 0)
+                _buildStatusEffectIndicator(
+                  'Miss',
+                  _enemyInvulnerableTurns,
+                  2,
+                  Icons.visibility_off,
+                  Colors.grey,
+                ),
+              if (_enemyParalysisTurns > 0)
+                _buildStatusEffectIndicator(
+                  'Paralysis',
+                  _enemyParalysisTurns,
+                  1,
+                  Icons.bolt,
+                  Colors.amber,
+                ),
             ] else ...[
               // Indikator untuk Player
               if (_playerBurnTurns > 0)
@@ -1553,6 +2048,22 @@ class _WildBattleArenaState extends State<WildBattleArena>
                   1,
                   Icons.link_off,
                   Colors.blue,
+                ),
+              if (_playerInvulnerableTurns > 0)
+                _buildStatusEffectIndicator(
+                  'Miss',
+                  _playerInvulnerableTurns,
+                  2,
+                  Icons.visibility_off,
+                  Colors.grey,
+                ),
+              if (_playerParalysisTurns > 0)
+                _buildStatusEffectIndicator(
+                  'Paralysis',
+                  _playerParalysisTurns,
+                  1,
+                  Icons.bolt,
+                  Colors.amber,
                 ),
             ],
           ],
@@ -1708,7 +2219,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
           Icon(icon, color: Colors.white, size: 14),
           const SizedBox(width: 6),
           Text(
-            '${maxTurns - currentTurnsLeft + 1}/$maxTurns $name',
+            '$currentTurnsLeft Turn(s) $name',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 10,
@@ -1937,6 +2448,8 @@ class _PvPMenuScreenState extends State<PvPMenuScreen> {
             'defense': widget.party.first.defense,
             'burnTurns': 0,
             'bindTurns': 0,
+            'paralysisTurns': 0,
+            'invulnerableTurns': 0,
             'consecutiveAbsorb': 0,
           },
           'createdAt': FieldValue.serverTimestamp(),
@@ -2031,6 +2544,8 @@ class _PvPMenuScreenState extends State<PvPMenuScreen> {
                       'defense': widget.party.first.defense,
                       'burnTurns': 0,
                       'bindTurns': 0,
+                      'paralysisTurns': 0,
+                      'invulnerableTurns': 0,
                       'consecutiveAbsorb': 0,
                     },
                   });
@@ -2143,7 +2658,7 @@ class PvPBattleArena extends StatefulWidget {
 }
 
 class _PvPBattleArenaState extends State<PvPBattleArena>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // Animasi & Deck
@@ -2151,6 +2666,9 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
   late Animation<double> _cardAnimation;
   List<MonsterMove> _currentCards = [];
 
+  late AnimationController _clashController;
+  late AnimationController _myShakeController;
+  late AnimationController _enemyShakeController;
   // State Lokal Sinkronisasi
   int _myDamageValue = 0;
   int _enemyDamageValue = 0;
@@ -2169,6 +2687,20 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
+    _clashController = AnimationController(
+      vsync: this,
+      duration: const Duration(
+        milliseconds: 1400,
+      ), // Diperlama untuk 2 fase animasi
+    );
+    _myShakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _enemyShakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
     _cardAnimation = CurvedAnimation(
       parent: _cardAnimationController,
       curve: Curves.easeOut,
@@ -2179,18 +2711,25 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
       _localTurnCount = 1;
       _drawCards();
       _cardAnimationController.forward();
+      _clashController.forward();
     }
   }
 
   @override
   void dispose() {
     _cardAnimationController.dispose();
+    _clashController.dispose();
+    _myShakeController.dispose();
+    _enemyShakeController.dispose();
     super.dispose();
   }
 
   MonsterElement _getElement(String elementStr) {
     if (elementStr == 'Api') return MonsterElement.Api;
     if (elementStr == 'Air') return MonsterElement.Air;
+    if (elementStr == 'Listrik') return MonsterElement.Listrik;
+    if (elementStr == 'Tanah') return MonsterElement.Tanah;
+    if (elementStr == 'Terbang') return MonsterElement.Terbang;
     return MonsterElement.Tumbuhan;
   }
 
@@ -2202,6 +2741,12 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
         return Icons.water_drop;
       case MonsterElement.Tumbuhan:
         return Icons.eco;
+      case MonsterElement.Listrik:
+        return Icons.bolt;
+      case MonsterElement.Tanah:
+        return Icons.terrain;
+      case MonsterElement.Terbang:
+        return Icons.flutter_dash;
     }
   }
 
@@ -2213,6 +2758,12 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
         return Colors.blue.shade400;
       case MonsterElement.Tumbuhan:
         return Colors.green.shade400;
+      case MonsterElement.Listrik:
+        return Colors.yellow.shade600;
+      case MonsterElement.Tanah:
+        return Colors.brown.shade600;
+      case MonsterElement.Terbang:
+        return Colors.lightBlue.shade100;
     }
   }
 
@@ -2221,14 +2772,34 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
             defender == MonsterElement.Tumbuhan) ||
         (attacker == MonsterElement.Tumbuhan &&
             defender == MonsterElement.Air) ||
-        (attacker == MonsterElement.Air && defender == MonsterElement.Api);
+        (attacker == MonsterElement.Air && defender == MonsterElement.Api) ||
+        (attacker == MonsterElement.Listrik &&
+            (defender == MonsterElement.Air ||
+                defender == MonsterElement.Terbang)) ||
+        (attacker == MonsterElement.Tanah &&
+            (defender == MonsterElement.Api ||
+                defender == MonsterElement.Listrik)) ||
+        (attacker == MonsterElement.Terbang &&
+            defender == MonsterElement.Tumbuhan);
   }
 
   bool _isNotVeryEffective(MonsterElement attacker, MonsterElement defender) {
     return (attacker == MonsterElement.Api && defender == MonsterElement.Air) ||
         (attacker == MonsterElement.Tumbuhan &&
             defender == MonsterElement.Api) ||
-        (attacker == MonsterElement.Air && defender == MonsterElement.Tumbuhan);
+        (attacker == MonsterElement.Air &&
+            defender == MonsterElement.Tumbuhan) ||
+        (attacker == MonsterElement.Listrik &&
+            defender == MonsterElement.Tanah) ||
+        (attacker == MonsterElement.Tanah &&
+            defender == MonsterElement.Tumbuhan) ||
+        (attacker == MonsterElement.Terbang &&
+            defender == MonsterElement.Listrik);
+  }
+
+  bool _isNoEffect(MonsterElement attacker, MonsterElement defender) {
+    return (attacker == MonsterElement.Tanah &&
+        defender == MonsterElement.Terbang);
   }
 
   // Menarik 3 kartu acak
@@ -2268,13 +2839,28 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     Map<String, dynamic> defender,
     MonsterMove move,
   ) {
+    int invulnerableTurns = defender['invulnerableTurns'] ?? 0;
+    if (invulnerableTurns > 0 && move.type != MoveType.recover) {
+      return {'damage': 0, 'log': ' Serangan meleset (Invulnerable)!'};
+    }
+
     final random = Random();
     MonsterElement attackerElement = _getElement(attacker['element']);
     MonsterElement defenderElement = _getElement(defender['element']);
 
+    if (defenderElement == MonsterElement.Terbang &&
+        random.nextInt(100) < 10 &&
+        move.type != MoveType.recover) {
+      return {'damage': 0, 'log': ' Serangan berhasil dihindari (Evasiness)!'};
+    }
+
     MonsterElement? moveElement;
     if (move.type == MoveType.elemental || move.type == MoveType.special) {
       moveElement = attackerElement;
+    }
+
+    if (moveElement != null && _isNoEffect(moveElement, defenderElement)) {
+      return {'damage': 0, 'log': ' Tidak ada efek pada tipe ini!'};
     }
 
     double typeModifier = 1.0;
@@ -2321,10 +2907,14 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
         critModifier *
         randomModifier;
 
-    // Bonus damage 25% (1/4) untuk serangan elemen jika musuh sedang terkena Burn
+    // Bonus damage 10% untuk serangan elemen jika musuh sedang terkena Burn
     if ((defender['burnTurns'] ?? 0) > 0 && move.type == MoveType.elemental) {
-      finalDamageDouble *= 1.25;
-      typeLog += " (Bonus Burn +25% DMG!)";
+      finalDamageDouble *= 1.1;
+      typeLog += " (Bonus Burn +10% DMG!)";
+      if (moveElement == MonsterElement.Api) {
+        finalDamageDouble += 2;
+        typeLog += " (+2 DMG Api!)";
+      }
     }
 
     String critLog = isCritical ? " Serangan Kritis!" : "";
@@ -2344,33 +2934,52 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     int myStamina = myData['stamina'];
     int myBurn = myData['burnTurns'] ?? 0;
     int myBind = myData['bindTurns'] ?? 0;
+    int myParalysis = myData['paralysisTurns'] ?? 0;
+    int myInvulnerable = myData['invulnerableTurns'] ?? 0;
     int myAbsorb = myData['consecutiveAbsorb'] ?? 0;
 
     int enemyHp = enemyData['hp'];
     int enemyBurn = enemyData['burnTurns'] ?? 0;
     int enemyBind = enemyData['bindTurns'] ?? 0;
+    int enemyParalysis = enemyData['paralysisTurns'] ?? 0;
+    int enemyInvulnerable = enemyData['invulnerableTurns'] ?? 0;
 
     String myRole = widget.isHost ? 'host' : 'guest';
     String enemyRole = widget.isHost ? 'guest' : 'host';
     String statusLog = "";
 
-    // 1. Cek Bind
-    if (myBind > 0) {
-      myBind--;
-      // Apply burn damage if bound
+    if (myInvulnerable > 0) myInvulnerable--;
+
+    // 1. Cek Skip Turn (Bind & Paralysis)
+    bool isSkippingTurn = false;
+    if (myBind > 0 || myParalysis > 0) {
+      if (myBind > 0) {
+        myBind--;
+        statusLog = "${myData['name']} terikat dan tidak bisa bergerak! ";
+      } else {
+        myParalysis--;
+        statusLog =
+            "${myData['name']} terkena Paralysis dan tidak bisa bergerak! ";
+      }
+      isSkippingTurn = true;
+    }
+
+    if (isSkippingTurn) {
       if (myBurn > 0) {
-        myHp = max(0, myHp - 1);
+        myHp = max(0, myHp - 5);
         myBurn--;
-        statusLog = "Kamu terkena damage Burn. ";
+        statusLog += "Terkena 5 damage Burn. ";
       }
 
       await _firestore.collection('rooms').doc(widget.roomCode).update({
         '$myRole.hp': myHp,
         '$myRole.burnTurns': myBurn,
         '$myRole.bindTurns': myBind,
+        '$myRole.paralysisTurns': myParalysis,
+        '$myRole.invulnerableTurns': myInvulnerable,
         'currentTurn': myHp <= 0 ? 'finished' : enemyRole,
         'turnCount': FieldValue.increment(1),
-        'log': statusLog + "${myData['name']} terikat dan tidak bisa bergerak!",
+        'log': statusLog.trim(),
         'status': myHp <= 0 ? 'finished' : 'playing',
       });
       _isProcessingTurn = false;
@@ -2379,13 +2988,15 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
 
     // 2. Cek Burn
     if (myBurn > 0) {
-      myHp = max(0, myHp - 1);
+      myHp = max(0, myHp - 5);
       myBurn--;
-      statusLog = "Kamu terkena damage Burn. ";
+      statusLog = "Kamu terkena 5 damage Burn! ";
       if (myHp <= 0) {
         await _firestore.collection('rooms').doc(widget.roomCode).update({
           '$myRole.hp': 0,
           '$myRole.burnTurns': myBurn,
+          '$myRole.invulnerableTurns': myInvulnerable,
+          '$myRole.paralysisTurns': myParalysis,
           'status': 'finished',
           'log': statusLog + "${myData['name']} kehabisan HP karena Burn!",
         });
@@ -2394,7 +3005,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
       }
     }
 
-    if (move.name == 'Absorb') {
+    if (move.name == 'Absorb' || move.effect == 'Drain HP & Heal') {
       myAbsorb++;
     } else {
       myAbsorb = 0;
@@ -2418,6 +3029,8 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
         '$myRole.hp': myHp,
         '$myRole.stamina': myStamina,
         '$myRole.burnTurns': myBurn,
+        '$myRole.paralysisTurns': myParalysis,
+        '$myRole.invulnerableTurns': myInvulnerable,
         'currentTurn': enemyRole,
         'turnCount': FieldValue.increment(1),
         'log':
@@ -2433,13 +3046,22 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     String elementalLog = damageResult['log'];
 
     String effectLog = "";
-    if (move.name == 'Flame Spin') {
+    if (move.name == 'Flame Spin' || move.effect == 'Burn 3 turn') {
       enemyBurn = 3;
       effectLog = " Musuh terkena Burn!";
-    } else if (move.name == 'Bind') {
+    } else if (move.name == 'Bind' || move.effect == 'Bind 1 turn') {
       enemyBind = 1;
       effectLog = " Musuh Terikat!";
-    } else if (move.name == 'Absorb') {
+    } else if (move.name == 'Paralysis' || move.effect == 'Paralysis 1 turn') {
+      enemyParalysis = 1;
+      effectLog = " Musuh terkena Paralysis!";
+    } else if (move.name == 'Grounding' || move.effect == 'Miss 2 turn') {
+      myInvulnerable = 2;
+      effectLog = " Kamu bersembunyi (Invulnerable 2 Turn)!";
+    } else if (move.name == 'Fly Away' || move.effect == 'Miss 1 turn') {
+      myInvulnerable = 1;
+      effectLog = " Kamu terbang tinggi (Invulnerable 1 Turn)!";
+    } else if (move.name == 'Absorb' || move.effect == 'Drain HP & Heal') {
       int combo = min(myAbsorb, 3);
       int bonus = (combo - 1) * 2;
       damage += bonus; // Tambahkan bonus combo
@@ -2457,10 +3079,15 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
       '$myRole.hp': myHp,
       '$myRole.stamina': myStamina,
       '$myRole.burnTurns': myBurn,
+      '$myRole.bindTurns': myBind,
+      '$myRole.paralysisTurns': myParalysis,
+      '$myRole.invulnerableTurns': myInvulnerable,
       '$myRole.consecutiveAbsorb': myAbsorb,
       '$enemyRole.hp': enemyHp,
       '$enemyRole.burnTurns': enemyBurn,
       '$enemyRole.bindTurns': enemyBind,
+      '$enemyRole.paralysisTurns': enemyParalysis,
+      '$enemyRole.invulnerableTurns': enemyInvulnerable,
       'currentTurn': enemyHp <= 0 ? 'finished' : enemyRole,
       'turnCount': FieldValue.increment(1),
       'log':
@@ -2530,8 +3157,13 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
               onPressed: () {
                 Navigator.pop(context); // Tutup dialog
                 if (allLevelUps.isNotEmpty) {
-                  // Panggil _showLevelUpDialog dari file jika ada (Bisa disalin/adaptasi dari WildBattle)
-                  Navigator.pop(context); // Kembali ke menu
+                  _showLevelUpDialog(
+                    allLevelUps,
+                    widget.playerMonster,
+                    initialLevel,
+                  ).then((_) {
+                    Navigator.pop(context); // Kembali ke menu
+                  });
                 } else {
                   Navigator.pop(context); // Langsung ke menu
                 }
@@ -2547,6 +3179,198 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
           ),
         ],
       ),
+    );
+  }
+
+  // Dialog untuk menampilkan kenaikan level (Diadaptasi dari WildBattle)
+  Future<void> _showLevelUpDialog(
+    List<Map<String, num>> allLevelUps,
+    Monster monster,
+    int initialLevel,
+  ) {
+    Map<String, num> totalIncreases = {};
+    for (var increases in allLevelUps) {
+      increases.forEach((key, value) {
+        totalIncreases[key] = (totalIncreases[key] ?? 0) + value;
+      });
+    }
+
+    // Hitung status lama dari status akhir dan total peningkatan
+    double oldAttack = monster.attack - (totalIncreases['Attack'] ?? 0);
+    double oldDefense = monster.defense - (totalIncreases['Defense'] ?? 0.0);
+    int oldHp = monster.hp - (totalIncreases['HP'] ?? 0).toInt();
+    int oldSpeed = monster.speed - (totalIncreases['Speed'] ?? 0).toInt();
+    int oldStamina = monster.stamina - (totalIncreases['Stamina'] ?? 0).toInt();
+
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          '✨ ${monster.name} Naik Level! ✨',
+          textAlign: TextAlign.center,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(
+                  begin: initialLevel.toDouble(),
+                  end: monster.level.toDouble(),
+                ),
+                duration: const Duration(milliseconds: 800),
+                builder: (context, value, child) {
+                  return Text(
+                    'Level ${value.toInt()}',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  );
+                },
+              ),
+            ),
+            const Divider(height: 24),
+            _buildStatIncreaseRow(
+              'HP',
+              oldHp,
+              monster.hp,
+              totalIncreases['HP']!,
+            ),
+            _buildStatIncreaseRow(
+              'Attack',
+              oldAttack,
+              monster.attack,
+              totalIncreases['Attack']!,
+            ),
+            _buildStatIncreaseRow(
+              'Defense',
+              oldDefense,
+              monster.defense,
+              totalIncreases['Defense']!,
+            ),
+            _buildStatIncreaseRow(
+              'Speed',
+              oldSpeed,
+              monster.speed,
+              totalIncreases['Speed']!,
+            ),
+            _buildStatIncreaseRow(
+              'Stamina',
+              oldStamina,
+              monster.stamina,
+              totalIncreases['Stamina']!,
+            ),
+          ],
+        ),
+        actions: [
+          Center(
+            child: ElevatedButton(
+              onPressed: () {
+                // Tambahkan jeda agar animasi stat dapat terlihat
+                Future.delayed(const Duration(milliseconds: 1500), () {
+                  if (mounted) {
+                    Navigator.pop(context);
+                  }
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Hebat!',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Widget Bantuan untuk baris peningkatan status di dialog
+  Widget _buildStatIncreaseRow(
+    String label,
+    num oldValue,
+    num newValue,
+    num increase,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('$label:', style: const TextStyle(fontWeight: FontWeight.w600)),
+          SizedBox(
+            width: 120, // Memberi lebar tetap untuk perataan
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(
+                begin: oldValue.toDouble(),
+                end: newValue.toDouble(),
+              ),
+              duration: const Duration(milliseconds: 1200),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, child) {
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.end, // Rata kanan
+                  children: [
+                    Text(
+                      value.toInt().toString(),
+                      style: const TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Animasi opacity untuk teks (+increase)
+                    AnimatedOpacity(
+                      opacity: value < newValue.toDouble()
+                          ? 1.0
+                          : 0.0, // Hilang saat nilai mencapai akhir
+                      duration: const Duration(
+                        milliseconds: 300,
+                      ), // Durasi fade out
+                      child: Text(
+                        '(+${increase.toInt()})',
+                        style: const TextStyle(
+                          color: Colors.green,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Widget Bantuan: Animasi Goyang (Shake)
+  Widget _buildShakeAnimator({
+    required AnimationController controller,
+    required Widget child,
+  }) {
+    return AnimatedBuilder(
+      animation: controller,
+      child: child,
+      builder: (context, child) {
+        final sineValue = sin(pi * 4 * controller.value); // 2 full shakes
+        return Transform.translate(
+          offset: Offset(sineValue * 8, 0), // Goyang 8 pixel kiri-kanan
+          child: child,
+        );
+      },
     );
   }
 
@@ -2589,16 +3413,20 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
 
             if (_oldMyHp != -1 && currentMyHp < _oldMyHp) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted)
+                if (mounted) {
                   setState(() => _myDamageValue = _oldMyHp - currentMyHp);
+                  _myShakeController.forward(from: 0.0);
+                }
               });
             }
             if (_oldEnemyHp != -1 && currentEnemyHp < _oldEnemyHp) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted)
+                if (mounted) {
                   setState(
                     () => _enemyDamageValue = _oldEnemyHp - currentEnemyHp,
                   );
+                  _enemyShakeController.forward(from: 0.0);
+                }
               });
             }
 
@@ -2632,26 +3460,94 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                   flex: 5,
                   child: Stack(
                     children: [
-                      // Diagonal Background
+                      // Animasi Clash Layar Diagonal
                       Positioned.fill(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topRight,
-                              end: Alignment.bottomLeft,
-                              stops: const [0.495, 0.495, 0.505, 0.505],
-                              colors: [
-                                _getElementColor(
-                                  _getElement(enemyData['element']),
-                                ).withOpacity(0.6),
-                                Colors.white,
-                                Colors.white,
-                                _getElementColor(
-                                  _getElement(myData['element']),
-                                ).withOpacity(0.6),
+                        child: AnimatedBuilder(
+                          animation: _clashController,
+                          builder: (context, child) {
+                            final linearValue = _clashController.value;
+                            // 40% Waktu pertama: Meluncur sebagai persegi
+                            final slideProgress = Curves.easeOut.transform(
+                              (linearValue / 0.4).clamp(0.0, 1.0),
+                            );
+                            // 60% Waktu sisanya: Membelah (morph) menjadi segitiga
+                            final morphProgress = Curves.easeOutBack.transform(
+                              ((linearValue - 0.4) / 0.6).clamp(0.0, 1.0),
+                            );
+
+                            final slideYTop =
+                                -(size.height / 2) * (1 - slideProgress);
+                            final slideYBottom =
+                                (size.height / 2) * (1 - slideProgress);
+
+                            return Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                // Musuh (Top)
+                                Transform.translate(
+                                  offset: Offset(0, slideYTop),
+                                  child: ClipPath(
+                                    clipper: DynamicTopClipper(morphProgress),
+                                    child: Container(
+                                      color: _getElementColor(
+                                        _getElement(enemyData['element']),
+                                      ),
+                                      child: Stack(
+                                        children: [
+                                          Positioned(
+                                            top: -40,
+                                            right: -40,
+                                            child: Icon(
+                                              _getElementIcon(
+                                                _getElement(
+                                                  enemyData['element'],
+                                                ),
+                                              ),
+                                              size: 250,
+                                              color: Colors.white.withOpacity(
+                                                0.1,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                // Pemain (Bottom)
+                                Transform.translate(
+                                  offset: Offset(0, slideYBottom),
+                                  child: ClipPath(
+                                    clipper: DynamicBottomClipper(
+                                      morphProgress,
+                                    ),
+                                    child: Container(
+                                      color: _getElementColor(
+                                        _getElement(myData['element']),
+                                      ),
+                                      child: Stack(
+                                        children: [
+                                          Positioned(
+                                            bottom: -40,
+                                            left: -40,
+                                            child: Icon(
+                                              _getElementIcon(
+                                                _getElement(myData['element']),
+                                              ),
+                                              size: 250,
+                                              color: Colors.white.withOpacity(
+                                                0.1,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ],
-                            ),
-                          ),
+                            );
+                          },
                         ),
                       ),
 
@@ -2673,28 +3569,6 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                             }
                             Navigator.pop(context);
                           },
-                        ),
-                      ),
-
-                      // Watermark Elemen Musuh
-                      Positioned(
-                        top: -40,
-                        right: -40,
-                        child: Icon(
-                          _getElementIcon(_getElement(enemyData['element'])),
-                          size: 250,
-                          color: Colors.white.withOpacity(0.1),
-                        ),
-                      ),
-
-                      // Watermark Elemen Player
-                      Positioned(
-                        bottom: -40,
-                        left: -40,
-                        child: Icon(
-                          _getElementIcon(_getElement(myData['element'])),
-                          size: 250,
-                          color: Colors.white.withOpacity(0.1),
                         ),
                       ),
 
@@ -2798,8 +3672,15 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
       tween: Tween<double>(begin: 0.0, end: 1.0),
       duration: const Duration(milliseconds: 800),
       onEnd: () {
-        if (mounted)
-          setState(() => isEnemy ? _enemyDamageValue = 0 : _myDamageValue = 0);
+        if (mounted) {
+          setState(() {
+            if (isEnemy) {
+              _enemyDamageValue = 0;
+            } else {
+              _myDamageValue = 0;
+            }
+          });
+        }
       },
       builder: (context, value, child) {
         return Opacity(
@@ -2880,6 +3761,8 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
         : const EdgeInsets.only(bottom: 32, left: 24);
     int burnTurns = data['burnTurns'] ?? 0;
     int bindTurns = data['bindTurns'] ?? 0;
+    int paralysisTurns = data['paralysisTurns'] ?? 0;
+    int invulnerableTurns = data['invulnerableTurns'] ?? 0;
 
     return Align(
       alignment: alignment,
@@ -2898,7 +3781,10 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
               ),
             ),
             const SizedBox(height: 16),
-            _buildHealthBarBox(data, isEnemy),
+            _buildShakeAnimator(
+              controller: isEnemy ? _enemyShakeController : _myShakeController,
+              child: _buildHealthBarBox(data, isEnemy),
+            ),
             if (burnTurns > 0)
               _buildStatusEffectIndicator(
                 'Burn',
@@ -2914,6 +3800,22 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                 3,
                 Icons.link_off,
                 Colors.blue,
+              ),
+            if (paralysisTurns > 0)
+              _buildStatusEffectIndicator(
+                'Paralysis',
+                paralysisTurns,
+                1,
+                Icons.bolt,
+                Colors.amber,
+              ),
+            if (invulnerableTurns > 0)
+              _buildStatusEffectIndicator(
+                'Miss',
+                invulnerableTurns,
+                2,
+                Icons.visibility_off,
+                Colors.grey,
               ),
           ],
         ),
@@ -3041,7 +3943,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
           Icon(icon, color: Colors.white, size: 14),
           const SizedBox(width: 6),
           Text(
-            '${maxTurns - currentTurnsLeft + 1}/$maxTurns $name',
+            '$currentTurnsLeft Turn(s) $name',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 10,
