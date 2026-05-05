@@ -227,6 +227,7 @@ class MonsterSelectionScreen extends StatefulWidget {
 class _MonsterSelectionScreenState extends State<MonsterSelectionScreen> {
   late final PageController _pageController;
   int _selectedIndex = 1; // Mulai dari monster tengah (index 1)
+  late final List<Widget> _prebuiltMonsterCards;
 
   // Daftar monster yang bisa dipilih
   final List<Monster> monsters = [
@@ -362,6 +363,21 @@ class _MonsterSelectionScreenState extends State<MonsterSelectionScreen> {
           0.55, // Sesuaikan fraction untuk sensitivitas geseran (swipe) carousel
       initialPage: initialPage,
     );
+
+    // Optimisasi: Pre-build widget kartu dan bungkus dengan RepaintBoundary
+    // agar Flutter tidak me-rebuild bayangan dan UI kartu berulang kali saat digeser.
+    _prebuiltMonsterCards = monsters.map((monster) {
+      return RepaintBoundary(child: MonsterCard(monster: monster));
+    }).toList();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Optimisasi: Pre-cache gambar agar tidak lag (jank) saat pertama kali dimuat
+    for (var monster in monsters) {
+      precacheImage(AssetImage(monster.imagePath), context);
+    }
   }
 
   @override
@@ -409,7 +425,6 @@ class _MonsterSelectionScreenState extends State<MonsterSelectionScreen> {
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    // 1. PageView transparan untuk menangani gesture scroll (swipe)
                     PageView.builder(
                       controller: _pageController,
                       itemCount: 20000, // Infinite scroll
@@ -419,78 +434,38 @@ class _MonsterSelectionScreenState extends State<MonsterSelectionScreen> {
                         });
                       },
                       itemBuilder: (context, index) {
-                        return const SizedBox.expand(); // Widget penangkap sentuhan transparan
-                      },
-                    ),
-                    // 2. Tampilan kartu 3D Carousel (menjamin kartu tengah ada di paling depan)
-                    AnimatedBuilder(
-                      animation: _pageController,
-                      builder: (context, child) {
-                        double page = _pageController.initialPage.toDouble();
-                        if (_pageController.position.haveDimensions) {
-                          page = _pageController.page ?? page;
-                        }
+                        // Gunakan AnimatedBuilder spesifik hanya di dalam item
+                        return AnimatedBuilder(
+                          animation: _pageController,
+                          builder: (context, child) {
+                            double page = index.toDouble();
+                            if (_pageController.position.haveDimensions) {
+                              page = _pageController.page ?? page;
+                            }
+                            double value = (page - index).clamp(-1.0, 1.0);
 
-                        int currentPage = page.floor();
-                        // Render 5 kartu terdekat dari posisi saat ini
-                        List<int> indices = [
-                          currentPage - 2,
-                          currentPage + 2,
-                          currentPage - 1,
-                          currentPage + 1,
-                          currentPage,
-                        ];
+                            // Animasi scale & opacity yang native dan jauh lebih ringan
+                            double scale = (1 - (value.abs() * 0.15)).clamp(
+                              0.8,
+                              1.0,
+                            );
+                            double opacity = (1 - (value.abs() * 0.5)).clamp(
+                              0.4,
+                              1.0,
+                            );
 
-                        // Urutkan berdasarkan jarak terdekat dengan tengah,
-                        // agar kartu yang di tengah di-render terakhir (z-index paling atas)
-                        indices.sort((a, b) {
-                          double distA = (page - a).abs();
-                          double distB = (page - b).abs();
-                          return distB.compareTo(distA);
-                        });
-
-                        return Stack(
-                          alignment: Alignment.center,
-                          children: indices.map((index) {
-                            double value = page - index;
-                            double clampedValue = value.clamp(-2.5, 2.5);
-
-                            // Efek mengecil untuk kartu yang di belakang
-                            final double scale =
-                                (1 - (clampedValue.abs() * 0.15)).clamp(
-                                  0.5,
-                                  1.0,
-                                );
-
-                            // Mengontrol efek tumpang tindih (overlap)
-                            final double translateX = -clampedValue * 140.0;
-
-                            // Opacity perlahan menghilang untuk kartu yang sangat jauh
-                            final double opacity =
-                                (1 - (clampedValue.abs() * 0.4)).clamp(
-                                  0.0,
-                                  1.0,
-                                );
-
-                            if (opacity == 0.0) return const SizedBox.shrink();
-
-                            return Transform.translate(
-                              offset: Offset(translateX, 0),
+                            return Center(
                               child: Transform.scale(
                                 scale: scale,
-                                child: Opacity(
-                                  opacity: opacity,
-                                  child: SizedBox(
-                                    height: 420,
-                                    child: MonsterCard(
-                                      monster:
-                                          monsters[index % monsters.length],
-                                    ),
-                                  ),
-                                ),
+                                child: Opacity(opacity: opacity, child: child),
                               ),
                             );
-                          }).toList(),
+                          },
+                          child: SizedBox(
+                            height: 420,
+                            child:
+                                _prebuiltMonsterCards[index % monsters.length],
+                          ),
                         );
                       },
                     ),

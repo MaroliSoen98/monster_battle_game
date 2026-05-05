@@ -50,6 +50,7 @@ class _BattleMenuScreenState extends State<BattleMenuScreen> {
           builder: (context) => WildBattleArena(
             playerMonster:
                 widget.party.first, // Gunakan monster pertama di party
+            party: widget.party, // Bawa seluruh party ke pertarungan
             onBattleEnd: (bool won) {
               if (won) {
                 // Ketika battle selesai dan menang, kurangi kuota
@@ -241,12 +242,14 @@ class TypewriterText extends StatefulWidget {
   final String text;
   final TextStyle style;
   final TextAlign textAlign;
+  final int maxLines;
 
   const TypewriterText({
     super.key,
     required this.text,
     required this.style,
     this.textAlign = TextAlign.center,
+    this.maxLines = 3,
   });
 
   @override
@@ -255,6 +258,7 @@ class TypewriterText extends StatefulWidget {
 
 class _TypewriterTextState extends State<TypewriterText> {
   String _displayedText = '';
+  Timer? _timer;
 
   @override
   void initState() {
@@ -270,10 +274,28 @@ class _TypewriterTextState extends State<TypewriterText> {
     }
   }
 
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
   void _animateText() {
-    // Tampilkan teks secara instan untuk kelancaran UI
+    _timer?.cancel();
     setState(() {
-      _displayedText = widget.text;
+      _displayedText = '';
+    });
+    
+    int charIndex = 0;
+    _timer = Timer.periodic(const Duration(milliseconds: 15), (timer) {
+      if (charIndex < widget.text.length) {
+        setState(() {
+          _displayedText += widget.text[charIndex];
+          charIndex++;
+        });
+      } else {
+        timer.cancel();
+      }
     });
   }
 
@@ -283,6 +305,8 @@ class _TypewriterTextState extends State<TypewriterText> {
       _displayedText,
       style: widget.style,
       textAlign: widget.textAlign,
+      maxLines: widget.maxLines,
+      overflow: TextOverflow.ellipsis,
     );
   }
 }
@@ -340,11 +364,13 @@ class DynamicBottomClipper extends CustomClipper<Path> {
 // ============================================================================
 class WildBattleArena extends StatefulWidget {
   final Monster playerMonster;
+  final List<Monster> party;
   final Function(bool won) onBattleEnd;
 
   const WildBattleArena({
     super.key,
     required this.playerMonster,
+    required this.party,
     required this.onBattleEnd,
   });
 
@@ -354,7 +380,11 @@ class WildBattleArena extends StatefulWidget {
 
 class _WildBattleArenaState extends State<WildBattleArena>
     with TickerProviderStateMixin {
+  late Monster _activeMonster;
   late Monster _enemyMonster;
+
+  Map<Monster, int> _partyHp = {};
+  Map<Monster, int> _partyStamina = {};
 
   // Status HP
   late int _playerHp;
@@ -366,6 +396,8 @@ class _WildBattleArenaState extends State<WildBattleArena>
   // Sistem Kartu (Deck)
   List<MonsterMove> _currentCards = [];
   bool _isPlayerTurn = true;
+  bool _isCaptureMode = false;
+  bool _isSwitchMode = false;
   String _battleLog = "Pertarungan dimulai!";
 
   // Untuk animasi damage
@@ -397,15 +429,33 @@ class _WildBattleArenaState extends State<WildBattleArena>
       0; // Combo berulang untuk kartu Absorb (Player)
   int _enemyConsecutiveAbsorb = 0; // Combo berulang untuk kartu Absorb (Enemy)
 
+  // Daftar Bola
+  final List<Map<String, dynamic>> _captureBalls = [
+    {'name': 'Basic Ball', 'bonus': 1.0, 'color': Colors.red, 'quantity': 10},
+    {'name': 'Power Ball', 'bonus': 1.5, 'color': Colors.blue, 'quantity': 5},
+    {'name': 'Locked Ball', 'bonus': 2.0, 'color': Colors.amber, 'quantity': 3},
+  ];
+
+  void _syncPartyStats() {
+    _partyHp[_activeMonster] = _playerHp;
+    _partyStamina[_activeMonster] = _playerStamina;
+  }
+
   @override
   void initState() {
     super.initState();
+    _activeMonster = widget.party.first;
+    for (var m in widget.party) {
+      _partyHp[m] = m.hp;
+      _partyStamina[m] = m.stamina;
+    }
+
     _enemyMonster = _generateRandomEnemy();
-    _playerHp = widget.playerMonster.hp;
+    _playerHp = _partyHp[_activeMonster]!;
     _enemyHp = _enemyMonster.hp;
-    _oldPlayerHp = widget.playerMonster.hp;
+    _oldPlayerHp = _playerHp;
     _oldEnemyHp = _enemyMonster.hp;
-    _playerStamina = widget.playerMonster.stamina;
+    _playerStamina = _partyStamina[_activeMonster]!;
     _enemyStamina = _enemyMonster.stamina;
     _cardAnimationController = AnimationController(
       vsync: this,
@@ -414,8 +464,8 @@ class _WildBattleArenaState extends State<WildBattleArena>
     _clashController = AnimationController(
       vsync: this,
       duration: const Duration(
-        milliseconds: 1400,
-      ), // Diperlama untuk 2 fase animasi
+        milliseconds: 1800,
+      ), // Diperlama untuk animasi garis clash
     );
     _playerShakeController = AnimationController(
       vsync: this,
@@ -586,10 +636,10 @@ class _WildBattleArenaState extends State<WildBattleArena>
     // Bonus damage 10% untuk serangan elemen jika musuh sedang terkena Burn
     if (defenderBurnTurns > 0 && move.type == MoveType.elemental) {
       finalDamageDouble *= 1.1;
-      typeLog += " (Bonus Burn +10% DMG!)";
+      typeLog += " (+10% DMG Burn!)";
       if (moveElement == MonsterElement.Api) {
         finalDamageDouble += 2;
-        typeLog += " (+2 DMG Api!)";
+        typeLog += " (+2 DMG Api)";
       }
     }
 
@@ -611,10 +661,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
     ];
     final rIndex = random.nextInt(6);
     final selectedElement = elements[rIndex];
-    final enemyLevel = max(
-      1,
-      widget.playerMonster.level + random.nextInt(3) - 1,
-    );
+    final enemyLevel = max(1, _activeMonster.level + random.nextInt(3) - 1);
 
     String monsterName = "";
     String imagePath = "";
@@ -1019,7 +1066,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
   // Menarik 3 kartu acak sesuai tipe serangan
   void _drawCards() {
     final random = Random();
-    final moves = widget.playerMonster.moves;
+    final moves = _activeMonster.moves;
     _currentCards.clear();
 
     final normalMoves = moves.where((m) => m.type == MoveType.normal).toList();
@@ -1059,6 +1106,131 @@ class _WildBattleArenaState extends State<WildBattleArena>
     _currentCards.shuffle();
   }
 
+  void _attemptCapture(int ballIndex) {
+    if (!_isPlayerTurn) return;
+    if (_captureBalls[ballIndex]['quantity'] <= 0) return;
+
+    double ballBonus = _captureBalls[ballIndex]['bonus'];
+    String ballName = _captureBalls[ballIndex]['name'];
+
+    setState(() {
+      _captureBalls[ballIndex]['quantity']--;
+      _isCaptureMode = false;
+      _isPlayerTurn = false;
+      _battleLog = "Kamu melempar $ballName...";
+    });
+
+    // 1. Hitung Status Bonus
+    double statusBonus = 1.0;
+    if (_enemyBurnTurns > 0 ||
+        _enemyParalysisTurns > 0 ||
+        _enemyBindTurns > 0) {
+      statusBonus = 1.5;
+    }
+
+    int hpMax = _enemyMonster.hp;
+    int hpCurrent = _enemyHp;
+
+    // Menggunakan Base Catch Rate 255.
+    // Secara matematis, pada HP Penuh (100%), peluangnya adalah ~33%.
+    // Pada HP setengah (50%), peluangnya ~66%.
+    // Pada HP sekarat (<10%), peluangnya mencapai 100%. (Rata-rata kesuksesan seimbang di 50%)
+    double catchRate = 255.0;
+
+    // Rumus Probabilitas Penangkapan
+    double a =
+        ((3 * hpMax - 2 * hpCurrent) * catchRate * ballBonus * statusBonus) /
+        (3 * hpMax);
+
+    bool isCaught = false;
+    if (a >= 255) {
+      isCaught = true;
+    } else {
+      double probability = a / 255.0;
+      double roll = Random().nextDouble();
+      if (roll <= probability) {
+        isCaught = true;
+      }
+    }
+
+    // Simulasi jeda animasi bola bergetar (shake)
+    Future.delayed(const Duration(seconds: 2), () async {
+      if (!mounted) return;
+      if (isCaught) {
+        setState(() {
+          _battleLog = "Berhasil! ${_enemyMonster.name} tertangkap!";
+        });
+
+        // Simpan monster baru ke memori device
+        _enemyMonster.hp = hpMax;
+        widget.party.add(_enemyMonster); // Tambahkan ke in-memory party
+        _partyHp[_enemyMonster] = _enemyMonster.hp;
+        _partyStamina[_enemyMonster] = _enemyMonster.stamina;
+        await SaveManager.saveParty(widget.party); // Update penyimpanan
+
+        Future.delayed(const Duration(seconds: 1), () {
+          if (mounted) _showEndGameDialog(true, isCaptured: true);
+        });
+      } else {
+        setState(() {
+          _battleLog = "Yah! ${_enemyMonster.name} berhasil membebaskan diri!";
+        });
+        _enemyTurn(); // Lanjut ke giliran musuh jika gagal
+      }
+    });
+  }
+
+  void _checkPlayerFaint() {
+    bool hasAliveMonster = widget.party.any((m) => _partyHp[m]! > 0);
+    if (hasAliveMonster) {
+      setState(() {
+        _battleLog =
+            "${_activeMonster.name} kehabisan tenaga! Pilih monster pengganti.";
+        _isSwitchMode = true;
+        _isCaptureMode = false;
+        _isPlayerTurn = true;
+      });
+    } else {
+      _showEndGameDialog(false);
+    }
+  }
+
+  void _switchMonster(Monster newMonster) {
+    if (!_isPlayerTurn) return;
+    if (newMonster == _activeMonster) return;
+    if (_partyHp[newMonster]! <= 0) return;
+
+    bool isFaintSwitch = _playerHp <= 0;
+
+    setState(() {
+      _syncPartyStats();
+
+      _activeMonster = newMonster;
+      _playerHp = _partyHp[_activeMonster]!;
+      _oldPlayerHp = _playerHp;
+      _playerStamina = _partyStamina[_activeMonster]!;
+      _oldEnemyHp = _enemyHp;
+
+      _isSwitchMode = false;
+      _battleLog = "Kamu mengeluarkan ${_activeMonster.name}!";
+
+      _drawCards();
+    });
+
+    // Jika switch terjadi karena monster mati, jangan hanguskan giliran
+    if (isFaintSwitch) {
+      setState(() {
+        _turnCount++;
+      });
+      _cardAnimationController.forward(from: 0.0);
+    } else {
+      setState(() {
+        _isPlayerTurn = false;
+      });
+      _enemyTurn(); // Switch manual menghanguskan 1 giliran
+    }
+  }
+
   void _playTurn(MonsterMove move) {
     if (!_isPlayerTurn) return;
 
@@ -1071,10 +1243,10 @@ class _WildBattleArenaState extends State<WildBattleArena>
       setState(() {
         if (_playerBindTurns > 0) {
           _playerBindTurns--;
-          _battleLog = "Kamu tidak bisa bergerak karena Terikat!";
+        _battleLog = "Kamu tak bisa gerak karena Terikat!";
         } else {
           _playerParalysisTurns--;
-          _battleLog = "Kamu tidak bisa bergerak karena Paralysis!";
+        _battleLog = "Kamu tak bisa gerak karena Paralysis!";
         }
         _isPlayerTurn = false;
       });
@@ -1087,11 +1259,12 @@ class _WildBattleArenaState extends State<WildBattleArena>
       setState(() {
         _oldPlayerHp = _playerHp; // Simpan HP lama untuk animasi
         _playerHp = max(0, _playerHp - 5);
+        _syncPartyStats();
         _playerBurnTurns--;
         statusLog = "Kamu terkena 5 damage Burn! ";
       });
       if (_playerHp == 0) {
-        _showEndGameDialog(false);
+        _checkPlayerFaint();
         return;
       }
     }
@@ -1118,10 +1291,11 @@ class _WildBattleArenaState extends State<WildBattleArena>
     if (move.type == MoveType.recover) {
       setState(() {
         _playerStamina = min(
-          widget.playerMonster.stamina,
+          _activeMonster.stamina,
           _playerStamina - move.cost,
         );
-        _battleLog = "Kamu fokus dan memulihkan ${-move.cost} stamina!";
+        _syncPartyStats();
+        _battleLog = "Fokus & pulihkan ${-move.cost} SP!";
         _isPlayerTurn = false;
       });
       _enemyTurn(); // Langsung ke giliran musuh
@@ -1132,12 +1306,10 @@ class _WildBattleArenaState extends State<WildBattleArena>
       _isPlayerTurn = false;
 
       // Update Stamina
-      _playerStamina = min(
-        widget.playerMonster.stamina,
-        _playerStamina - move.cost,
-      );
+      _playerStamina = min(_activeMonster.stamina, _playerStamina - move.cost);
+      _syncPartyStats();
       final damageResult = _calculateDamage(
-        widget.playerMonster,
+        _activeMonster,
         _enemyMonster,
         move,
         defenderBindTurns: _enemyBindTurns,
@@ -1151,30 +1323,31 @@ class _WildBattleArenaState extends State<WildBattleArena>
       String effectLog = "";
       if (move.name == 'Flame Spin' || move.effect == 'Burn 3 turn') {
         _enemyBurnTurns = 3;
-        effectLog = " Musuh terkena Burn!";
+        effectLog = " Musuh Burn!";
       } else if (move.name == 'Bind' || move.effect == 'Bind 1 turn') {
         _enemyBindTurns = 1;
         effectLog = " Musuh Terikat!";
       } else if (move.name == 'Paralysis' ||
           move.effect == 'Paralysis 1 turn') {
         _enemyParalysisTurns = 1;
-        effectLog = " Musuh terkena Paralysis!";
+        effectLog = " Musuh Paralysis!";
       } else if (move.name == 'Grounding' || move.effect == 'Miss 2 turn') {
         _playerInvulnerableTurns = 2;
-        effectLog = " Kamu bersembunyi (Invulnerable 2 Turn)!";
+        effectLog = " Sembunyi 2 Turn!";
       } else if (move.name == 'Fly Away' || move.effect == 'Miss 1 turn') {
         _playerInvulnerableTurns = 1;
-        effectLog = " Kamu terbang tinggi (Invulnerable 1 Turn)!";
+        effectLog = " Terbang 1 Turn!";
       } else if (move.name == 'Absorb' || move.effect == 'Drain HP & Heal') {
         int combo = min(_playerConsecutiveAbsorb, 3);
         int bonus = (combo - 1) * 2;
         damage += bonus; // Tambahkan bonus ke total damage
         int healAmount = damage; // Heal disesuaikan dengan damage
-        _playerHp = min(widget.playerMonster.hp, _playerHp + healAmount);
-        effectLog = " Kamu menyerap $healAmount HP!";
+        _playerHp = min(_activeMonster.hp, _playerHp + healAmount);
+        _syncPartyStats();
+        effectLog = " Serap $healAmount HP!";
       }
       if (move.cost < 0 && move.type != MoveType.recover) {
-        effectLog += " Kamu memulihkan ${-move.cost} stamina!";
+        effectLog += " Pulih ${-move.cost} SP!";
       }
 
       _enemyDamageValue = damage; // Set damage value setelah buff Absorb
@@ -1185,7 +1358,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
       }
       _battleLog =
           statusLog +
-          "${widget.playerMonster.name} menggunakan ${move.name}!$elementalLog$effectLog";
+          "${_activeMonster.name} pakai ${move.name}!$elementalLog$effectLog";
     });
 
     if (_enemyHp == 0) {
@@ -1212,7 +1385,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
         if (_enemyBurnTurns > 0) {
           _enemyHp = max(0, _enemyHp - 5);
           _enemyBurnTurns--;
-          statusLog = "Musuh terkena 5 damage Burn! ";
+          statusLog = "Musuh kena 5 DMG Burn! ";
         }
 
         if (_enemyHp == 0) {
@@ -1225,14 +1398,10 @@ class _WildBattleArenaState extends State<WildBattleArena>
         if (_enemyBindTurns > 0 || _enemyParalysisTurns > 0) {
           if (_enemyBindTurns > 0) {
             _enemyBindTurns--;
-            _battleLog =
-                statusLog +
-                "${_enemyMonster.name} terikat dan tidak bisa bergerak!";
+            _battleLog = statusLog + "${_enemyMonster.name} Terikat!";
           } else {
             _enemyParalysisTurns--;
-            _battleLog =
-                statusLog +
-                "${_enemyMonster.name} terkena Paralysis dan tidak bisa bergerak!";
+            _battleLog = statusLog + "${_enemyMonster.name} Paralysis!";
           }
           _nextPlayerTurn();
           return;
@@ -1256,7 +1425,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
           Map<MonsterMove, double> moveScores = {};
           bool isPlayerWeak = _isSuperEffective(
             _enemyMonster.element,
-            widget.playerMonster.element,
+            _activeMonster.element,
           );
 
           for (var move in affordableMoves) {
@@ -1316,14 +1485,12 @@ class _WildBattleArenaState extends State<WildBattleArena>
           );
 
           if (chosenMove.type == MoveType.recover) {
-            _battleLog =
-                statusLog +
-                "${_enemyMonster.name} fokus dan memulihkan ${-chosenMove.cost} stamina!";
+            _battleLog = statusLog + "${_enemyMonster.name} pulihkan ${-chosenMove.cost} SP!";
           } else {
             // Attack move
             final damageResult = _calculateDamage(
               _enemyMonster,
-              widget.playerMonster,
+              _activeMonster,
               chosenMove,
               defenderBindTurns: _playerBindTurns,
               defenderBurnTurns: _playerBurnTurns,
@@ -1336,7 +1503,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
             if (chosenMove.name == 'Flame Spin' ||
                 chosenMove.effect == 'Burn 3 turn') {
               _playerBurnTurns = 3;
-              effectLog = " Kamu terkena Burn!";
+              effectLog = " Kamu Burn!";
             } else if (chosenMove.name == 'Bind' ||
                 chosenMove.effect == 'Bind 1 turn') {
               _playerBindTurns = 1;
@@ -1344,15 +1511,15 @@ class _WildBattleArenaState extends State<WildBattleArena>
             } else if (chosenMove.name == 'Paralysis' ||
                 chosenMove.effect == 'Paralysis 1 turn') {
               _playerParalysisTurns = 1;
-              effectLog = " Kamu terkena Paralysis!";
+              effectLog = " Kamu Paralysis!";
             } else if (chosenMove.name == 'Grounding' ||
                 chosenMove.effect == 'Miss 2 turn') {
               _enemyInvulnerableTurns = 2;
-              effectLog = " Musuh bersembunyi (Invulnerable 2 Turn)!";
+              effectLog = " Musuh Sembunyi!";
             } else if (chosenMove.name == 'Fly Away' ||
                 chosenMove.effect == 'Miss 1 turn') {
               _enemyInvulnerableTurns = 1;
-              effectLog = " Musuh terbang tinggi (Invulnerable 1 Turn)!";
+              effectLog = " Musuh Terbang!";
             } else if (chosenMove.name == 'Absorb' ||
                 chosenMove.effect == 'Drain HP & Heal') {
               int combo = min(_enemyConsecutiveAbsorb, 3);
@@ -1361,34 +1528,33 @@ class _WildBattleArenaState extends State<WildBattleArena>
               int healAmount = enemyDamage; // Heal disesuaikan dengan damage
               _oldEnemyHp = _enemyHp;
               _enemyHp = min(_enemyMonster.hp, _enemyHp + healAmount);
-              effectLog = " Musuh menyerap $healAmount HP!";
+              effectLog = " Musuh serap $healAmount HP!";
             }
             if (chosenMove.cost < 0 && chosenMove.type != MoveType.recover) {
-              effectLog += " Musuh memulihkan ${-chosenMove.cost} stamina!";
+              effectLog += " Musuh pulih ${-chosenMove.cost} SP!";
             }
 
             _playerDamageValue = enemyDamage;
             _oldPlayerHp = _playerHp;
             _playerHp = max(0, _playerHp - enemyDamage);
+            _syncPartyStats();
             if (enemyDamage > 0) {
               _playerShakeController.forward(from: 0.0);
             }
 
             _battleLog =
                 statusLog +
-                "${_enemyMonster.name} menggunakan ${chosenMove.name}!$elementalLog$effectLog";
+                "${_enemyMonster.name} pakai ${chosenMove.name}!$elementalLog$effectLog";
           }
         } else {
           // No affordable moves, enemy struggles and recovers a bit of stamina
           _enemyStamina = min(_enemyMonster.stamina, _enemyStamina + 2);
-          _battleLog =
-              statusLog +
-              "${_enemyMonster.name} kehabisan tenaga dan beristirahat!";
+          _battleLog = statusLog + "${_enemyMonster.name} istirahat!";
         }
       });
 
       if (_playerHp == 0) {
-        _showEndGameDialog(false);
+        _checkPlayerFaint();
       } else {
         _nextPlayerTurn();
       }
@@ -1408,7 +1574,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
     });
   }
 
-  void _showEndGameDialog(bool won) {
+  void _showEndGameDialog(bool won, {bool isCaptured = false}) {
     widget.onBattleEnd(won);
 
     final random = Random();
@@ -1416,50 +1582,57 @@ class _WildBattleArenaState extends State<WildBattleArena>
     int exp = won ? 20 + random.nextInt(30) : 5;
 
     List<Map<String, num>> allLevelUps = [];
-    int initialLevel = widget.playerMonster.level;
+    int initialLevel = _activeMonster.level;
 
     // Logika penambahan EXP dan Level Up
     if (won) {
-      widget.playerMonster.currentExp += exp;
-      while (widget.playerMonster.currentExp >=
-          widget.playerMonster.expToNextLevel) {
+      _activeMonster.currentExp += exp;
+      while (_activeMonster.currentExp >= _activeMonster.expToNextLevel) {
         int remainingExp =
-            widget.playerMonster.currentExp -
-            widget.playerMonster.expToNextLevel;
+            _activeMonster.currentExp - _activeMonster.expToNextLevel;
 
         // Naik Level!
-        final statIncreases = widget.playerMonster.levelUp();
+        final statIncreases = _activeMonster.levelUp();
         allLevelUps.add(statIncreases);
 
-        widget.playerMonster.currentExp = remainingExp;
-        widget.playerMonster.expToNextLevel = Monster.calculateExpForNextLevel(
-          widget.playerMonster.level,
+        _activeMonster.currentExp = remainingExp;
+        _activeMonster.expToNextLevel = Monster.calculateExpForNextLevel(
+          _activeMonster.level,
         );
       }
     }
 
-    // Simpan progress terbaru pemain (EXP & Level) ke memori internal HP
-    SaveManager.saveParty([widget.playerMonster]);
+    // Simpan seluruh party
+    SaveManager.saveParty(widget.party);
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(won ? 'Menang!' : 'Kalah...', textAlign: TextAlign.center),
+        title: Text(
+          won ? (isCaptured ? 'Tertangkap!' : 'Menang!') : 'Kalah...',
+          textAlign: TextAlign.center,
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Icon(
-              won ? Icons.emoji_events : Icons.sentiment_very_dissatisfied,
+              won
+                  ? (isCaptured ? Icons.catching_pokemon : Icons.emoji_events)
+                  : Icons.sentiment_very_dissatisfied,
               size: 60,
-              color: won ? Colors.amber : Colors.grey,
+              color: won
+                  ? (isCaptured ? Colors.redAccent : Colors.amber)
+                  : Colors.grey,
             ),
             const SizedBox(height: 16),
             Text(
               won
-                  ? 'Kamu berhasil mengalahkan ${_enemyMonster.name}!'
+                  ? (isCaptured
+                        ? 'Kamu berhasil menangkap ${_enemyMonster.name}!'
+                        : 'Kamu berhasil mengalahkan ${_enemyMonster.name}!')
                   : 'Monster kamu kehabisan tenaga.',
               textAlign: TextAlign.center,
             ),
@@ -1476,6 +1649,49 @@ class _WildBattleArenaState extends State<WildBattleArena>
                   color: Colors.orange,
                 ),
               ),
+            // POP-UP STATISTIK CAPTURE
+            if (isCaptured) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _enemyMonster.elementColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _enemyMonster.elementColor.withOpacity(0.5),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _getElementIcon(_enemyMonster.element),
+                          color: _enemyMonster.elementColor,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${_enemyMonster.name} (Lv ${_enemyMonster.level})',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    const Divider(),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildMiniStat('HP', _enemyMonster.hp),
+                        _buildMiniStat('ATK', _enemyMonster.attack.toInt()),
+                        _buildMiniStat('DEF', _enemyMonster.defense.toInt()),
+                        _buildMiniStat('SPD', _enemyMonster.speed),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
         actions: [
@@ -1486,7 +1702,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                 if (allLevelUps.isNotEmpty) {
                   _showLevelUpDialog(
                     allLevelUps,
-                    widget.playerMonster,
+                    _activeMonster,
                     initialLevel,
                   ).then((_) {
                     Navigator.pop(
@@ -1511,6 +1727,19 @@ class _WildBattleArenaState extends State<WildBattleArena>
           ),
         ],
       ),
+    );
+  }
+
+  // Widget Bantuan: Status Singkat Pop-Up
+  Widget _buildMiniStat(String label, int value) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        Text(
+          '$value',
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        ),
+      ],
     );
   }
 
@@ -1700,81 +1929,139 @@ class _WildBattleArenaState extends State<WildBattleArena>
             Expanded(
               flex: 5,
               child: Stack(
+                clipBehavior:
+                    Clip.none, // Cegah garis putih terpotong batas luar
                 children: [
                   // Animasi Clash Layar Diagonal
                   Positioned.fill(
-                    child: AnimatedBuilder(
-                      animation: _clashController,
-                      builder: (context, child) {
-                        final linearValue = _clashController.value;
-                        // 40% Waktu pertama: Meluncur sebagai persegi dari Atas & Bawah
-                        final slideProgress = Curves.easeOut.transform(
-                          (linearValue / 0.4).clamp(0.0, 1.0),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final boxSize = Size(
+                          constraints.maxWidth,
+                          constraints.maxHeight,
                         );
-                        // 60% Waktu sisanya: Membelah perlahan menjadi segitiga diagonal
-                        final morphProgress = Curves.easeOutBack.transform(
-                          ((linearValue - 0.4) / 0.6).clamp(0.0, 1.0),
-                        );
+                        return AnimatedBuilder(
+                          animation: _clashController,
+                          builder: (context, child) {
+                            final linearValue = _clashController.value;
+                            // 35% Waktu pertama: Meluncur sebagai persegi dari Atas & Bawah
+                            final slideProgress = Curves.easeOut.transform(
+                              (linearValue / 0.35).clamp(0.0, 1.0),
+                            );
 
-                        final slideYTop =
-                            -(size.height / 2) * (1 - slideProgress);
-                        final slideYBottom =
-                            (size.height / 2) * (1 - slideProgress);
+                            // 15% Waktu (0.35 - 0.50): Garis putih memanjang dari tengah
+                            final lineProgress = Curves.easeOut.transform(
+                              ((linearValue - 0.35) / 0.15).clamp(0.0, 1.0),
+                            );
 
-                        return Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            // Sisi Musuh (Top)
-                            Transform.translate(
-                              offset: Offset(0, slideYTop),
-                              child: ClipPath(
-                                clipper: DynamicTopClipper(morphProgress),
-                                child: Container(
-                                  color: _enemyMonster.elementColor,
-                                  child: Stack(
-                                    children: [
-                                      Positioned(
-                                        top: -40,
-                                        right: -40,
-                                        child: Icon(
-                                          _getElementIcon(
-                                            _enemyMonster.element,
+                            // 50% Waktu sisanya (0.50 - 1.0): Membelah perlahan menjadi segitiga diagonal
+                            final morphProgress = Curves.easeOutBack.transform(
+                              ((linearValue - 0.50) / 0.50).clamp(0.0, 1.0),
+                            );
+
+                            // Hitung rotasi dan panjang garis berdasarkan progres morphing
+                            final dy = boxSize.height * morphProgress;
+                            final dx = boxSize.width;
+                            final lineAngle = atan2(dy, dx);
+                            // Kalikan 2.5 agar garis sangat panjang dan pasti membelah hingga ujung layar
+                            final lineWidth = sqrt(dx * dx + dy * dy) * 2.5;
+
+                            final slideYTop =
+                                -(boxSize.height / 2) * (1 - slideProgress);
+                            final slideYBottom =
+                                (boxSize.height / 2) * (1 - slideProgress);
+
+                            return Stack(
+                              fit: StackFit.expand,
+                              clipBehavior: Clip.none, // Izinkan Overflow
+                              children: [
+                                // Sisi Musuh (Top)
+                                Transform.translate(
+                                  offset: Offset(0, slideYTop),
+                                  child: ClipPath(
+                                    clipper: DynamicTopClipper(morphProgress),
+                                    child: Container(
+                                      color: _enemyMonster.elementColor,
+                                      child: Stack(
+                                        children: [
+                                          Positioned(
+                                            top: -40,
+                                            right: -40,
+                                            child: Icon(
+                                              _getElementIcon(
+                                                _enemyMonster.element,
+                                              ),
+                                              size: 250,
+                                              color: Colors.white.withOpacity(
+                                                0.1,
+                                              ),
+                                            ),
                                           ),
-                                          size: 250,
-                                          color: Colors.white.withOpacity(0.1),
-                                        ),
+                                        ],
                                       ),
-                                    ],
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ),
-                            // Sisi Pemain (Bottom)
-                            Transform.translate(
-                              offset: Offset(0, slideYBottom),
-                              child: ClipPath(
-                                clipper: DynamicBottomClipper(morphProgress),
-                                child: Container(
-                                  color: widget.playerMonster.elementColor,
-                                  child: Stack(
-                                    children: [
-                                      Positioned(
-                                        bottom: -40,
-                                        left: -40,
-                                        child: Icon(
-                                          _getElementIcon(
-                                            widget.playerMonster.element,
+                                // Sisi Pemain (Bottom)
+                                Transform.translate(
+                                  offset: Offset(0, slideYBottom),
+                                  child: ClipPath(
+                                    clipper: DynamicBottomClipper(
+                                      morphProgress,
+                                    ),
+                                    child: Container(
+                                      color: _activeMonster.elementColor,
+                                      child: Stack(
+                                        children: [
+                                          Positioned(
+                                            bottom: -40,
+                                            left: -40,
+                                            child: Icon(
+                                              _getElementIcon(
+                                                _activeMonster.element,
+                                              ),
+                                              size: 250,
+                                              color: Colors.white.withOpacity(
+                                                0.1,
+                                              ),
+                                            ),
                                           ),
-                                          size: 250,
-                                          color: Colors.white.withOpacity(0.1),
-                                        ),
+                                        ],
                                       ),
-                                    ],
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ),
-                          ],
+                                // Garis Putih (Clash Line)
+                                if (lineProgress > 0)
+                                  Center(
+                                    child: OverflowBox(
+                                      maxWidth: double.infinity,
+                                      maxHeight: double.infinity,
+                                      child: Transform.rotate(
+                                        angle: lineAngle,
+                                        child: Container(
+                                          height:
+                                              4, // Tetap tipis, tidak ikut melebar
+                                          width: lineWidth * lineProgress,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.white.withOpacity(
+                                                  0.8,
+                                                ),
+                                                blurRadius: 15,
+                                                spreadRadius: 2,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            );
+                          },
                         );
                       },
                     ),
@@ -1846,7 +2133,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                   // --- PEMAIN (BOTTOM LEFT) ---
                   _buildArenaSide(
                     isEnemy: false,
-                    monster: widget.playerMonster,
+                    monster: _activeMonster,
                     currentHp: _playerHp,
                     currentStamina: _playerStamina,
                   ),
@@ -1855,19 +2142,108 @@ class _WildBattleArenaState extends State<WildBattleArena>
             ),
 
             // BATTLE LOG
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-              color: Colors.black87,
-              child: TypewriterText(
-                // Menggunakan widget teks berjalan
-                text: _battleLog,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontStyle: FontStyle.italic,
-                ),
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16.0,
+                vertical: 8.0,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 24,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white24, width: 1),
+                      ),
+                      child: TypewriterText(
+                        text: _battleLog,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (_isPlayerTurn) ...[
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: () {
+                        if (_playerHp <= 0)
+                          return; // Pemain dipaksa harus memilih monster jika mati
+                        setState(() {
+                          _isSwitchMode = !_isSwitchMode;
+                          if (_isSwitchMode) _isCaptureMode = false;
+                        });
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _isSwitchMode
+                              ? Colors.blueAccent
+                              : Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black26,
+                              blurRadius: 6,
+                              offset: Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          _isSwitchMode ? Icons.close : Icons.swap_horiz,
+                          color: _isSwitchMode
+                              ? Colors.white
+                              : Colors.blueAccent,
+                          size: 28,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () {
+                        if (_playerHp <= 0)
+                          return; // Pemain dipaksa harus memilih monster jika mati
+                        setState(() {
+                          _isCaptureMode = !_isCaptureMode;
+                          if (_isCaptureMode) _isSwitchMode = false;
+                        });
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _isCaptureMode
+                              ? Colors.redAccent
+                              : Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black26,
+                              blurRadius: 6,
+                              offset: Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          _isCaptureMode ? Icons.close : Icons.catching_pokemon,
+                          color: _isCaptureMode
+                              ? Colors.white
+                              : Colors.redAccent,
+                          size: 28,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
 
@@ -1878,14 +2254,85 @@ class _WildBattleArenaState extends State<WildBattleArena>
                 padding: const EdgeInsets.all(16.0),
                 color: Colors.grey.shade900,
                 child: _isPlayerTurn
-                    ? Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: List.generate(_currentCards.length, (index) {
-                          return _buildAnimatedCard(
-                            _currentCards[index],
-                            index,
-                          );
-                        }),
+                    ? ClipRect(
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          transitionBuilder:
+                              (Widget child, Animation<double> animation) {
+                                final isIncoming =
+                                    child.key ==
+                                    (_isCaptureMode
+                                        ? const ValueKey('capture_mode')
+                                        : _isSwitchMode
+                                        ? const ValueKey('switch_mode')
+                                        : const ValueKey('moves_mode'));
+
+                                // Animasi slider murni tanpa efek bayang-bayang (Fade)
+                                if (isIncoming) {
+                                  return SlideTransition(
+                                    position: Tween<Offset>(
+                                      begin: const Offset(1.0, 0.0),
+                                      end: Offset.zero,
+                                    ).animate(animation),
+                                    child: child,
+                                  );
+                                } else {
+                                  return SlideTransition(
+                                    position: Tween<Offset>(
+                                      begin: const Offset(-1.0, 0.0),
+                                      end: Offset.zero,
+                                    ).animate(animation),
+                                    child: child,
+                                  );
+                                }
+                              },
+                          child: _isCaptureMode
+                              ? Row(
+                                  key: const ValueKey('capture_mode'),
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceEvenly,
+                                  children: List.generate(
+                                    _captureBalls.length,
+                                    (index) {
+                                      return _buildBallCard(
+                                        _captureBalls[index],
+                                        index,
+                                      );
+                                    },
+                                  ),
+                                )
+                              : _isSwitchMode
+                              ? SingleChildScrollView(
+                                  key: const ValueKey('switch_mode'),
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: List.generate(
+                                      widget.party.length,
+                                      (index) {
+                                        return _buildMonsterSwitchCard(
+                                          widget.party[index],
+                                          index,
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                )
+                              : Row(
+                                  key: const ValueKey('moves_mode'),
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceEvenly,
+                                  children: List.generate(
+                                    _currentCards.length,
+                                    (index) {
+                                      return _buildAnimatedCard(
+                                        _currentCards[index],
+                                        index,
+                                      );
+                                    },
+                                  ),
+                                ),
+                        ),
                       )
                     : const Center(
                         child: CircularProgressIndicator(color: Colors.white),
@@ -2237,8 +2684,8 @@ class _WildBattleArenaState extends State<WildBattleArena>
     IconData icon = Icons.sports_mma;
 
     if (move.type == MoveType.elemental) {
-      bgColor = widget.playerMonster.elementColor;
-      icon = _getElementIcon(widget.playerMonster.element);
+      bgColor = _activeMonster.elementColor;
+      icon = _getElementIcon(_activeMonster.element);
     } else if (move.type == MoveType.special) {
       bgColor = Colors.purple.shade400;
       icon = Icons.auto_awesome;
@@ -2365,6 +2812,275 @@ class _WildBattleArenaState extends State<WildBattleArena>
       ),
     );
   }
+
+  // Widget Bantuan: Kartu Ball Capture
+  Widget _buildBallCard(Map<String, dynamic> ball, int index) {
+    int quantity = ball['quantity'];
+    bool outOfStock = quantity <= 0;
+    Color bgColor = ball['color'];
+
+    return GestureDetector(
+      onTap: outOfStock ? null : () => _attemptCapture(index),
+      child: Opacity(
+        opacity: outOfStock ? 0.5 : 1.0,
+        child: Container(
+          width: 130,
+          height: 190,
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.8), width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.2),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(14),
+                    topRight: Radius.circular(14),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      'QTY',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'X $quantity',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.catching_pokemon,
+                        size: 48,
+                        color: Colors.white.withOpacity(0.9),
+                      ),
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Text(
+                          ball['name'],
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withOpacity(0.4),
+                                blurRadius: 2,
+                                offset: const Offset(1, 1),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.2),
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(14),
+                    bottomRight: Radius.circular(14),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.business_center, color: Colors.white, size: 16),
+                    SizedBox(width: 6),
+                    Text(
+                      'ITEM',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Widget Bantuan: Kartu Switch Monster
+  Widget _buildMonsterSwitchCard(Monster monster, int index) {
+    bool isDead = _partyHp[monster]! <= 0;
+    bool isActive = monster == _activeMonster;
+    bool disabled = isDead || isActive;
+    Color bgColor = monster.elementColor;
+
+    return GestureDetector(
+      onTap: disabled ? null : () => _switchMonster(monster),
+      child: Opacity(
+        opacity: disabled ? 0.6 : 1.0,
+        child: Container(
+          width: 130,
+          height: 190,
+          margin: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.8), width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.2),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(14),
+                    topRight: Radius.circular(14),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'LVL ${monster.level}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      isActive ? 'ACTIVE' : (isDead ? 'FAINTED' : 'SWAP'),
+                      style: TextStyle(
+                        color: isActive
+                            ? Colors.amber
+                            : (isDead ? Colors.red : Colors.white),
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _getElementIcon(monster.element),
+                        size: 48,
+                        color: Colors.white.withOpacity(0.9),
+                      ),
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                        child: Text(
+                          monster.name,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withOpacity(0.4),
+                                blurRadius: 2,
+                                offset: const Offset(1, 1),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.2),
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(14),
+                    bottomRight: Radius.circular(14),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'HP',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    LinearProgressIndicator(
+                      value: _partyHp[monster]! / monster.hp,
+                      backgroundColor: Colors.black26,
+                      color: isDead ? Colors.red : Colors.green,
+                      minHeight: 6,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${_partyHp[monster]}/${monster.hp}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ============================================================================
@@ -2393,36 +3109,71 @@ class _PvPMenuScreenState extends State<PvPMenuScreen> {
       barrierDismissible: false,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Room Dibuat'),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'Room Dibuat',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Text('Bagikan kode ini ke temanmu:'),
+              const Text(
+                'Bagikan kode ini ke temanmu:',
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 16),
-              SelectableText(
-                roomCode,
-                style: const TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue,
-                  letterSpacing: 8,
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12,
+                  horizontal: 24,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.shade200, width: 2),
+                ),
+                child: SelectableText(
+                  roomCode,
+                  style: const TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blueAccent,
+                    letterSpacing: 10,
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
-              const CircularProgressIndicator(),
-              const SizedBox(height: 16),
-              const Text('Menunggu lawan bergabung...'),
+              const CircularProgressIndicator(color: Colors.blueAccent),
+              const SizedBox(height: 20),
+              const Text(
+                'Menunggu lawan bergabung...',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () {
-                // Hapus room dari database jika host membatalkan
-                _firestore.collection('rooms').doc(roomCode).delete();
-                Navigator.pop(dialogContext);
-              },
-              child: const Text('Batal', style: TextStyle(color: Colors.red)),
+            Center(
+              child: TextButton(
+                onPressed: () {
+                  // Hapus room dari database jika host membatalkan
+                  _firestore.collection('rooms').doc(roomCode).delete();
+                  Navigator.pop(dialogContext);
+                },
+                child: const Text(
+                  'Batal',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
             ),
           ],
         );
@@ -2486,6 +3237,7 @@ class _PvPMenuScreenState extends State<PvPMenuScreen> {
                   builder: (context) => PvPBattleArena(
                     roomCode: roomCode,
                     playerMonster: widget.party.first,
+                    party: widget.party,
                     isHost: true,
                   ),
                 ),
@@ -2500,21 +3252,47 @@ class _PvPMenuScreenState extends State<PvPMenuScreen> {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Gabung Room'),
-        content: TextField(
-          controller: _codeController,
-          autofocus: true,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'Masukkan Kode Room',
-            counterText: '',
-          ),
-          maxLength: 6,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Gabung Room',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Masukkan 6 digit kode dari Host.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _codeController,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 24,
+                letterSpacing: 8,
+                fontWeight: FontWeight.bold,
+              ),
+              decoration: InputDecoration(
+                hintText: '000000',
+                counterText: '',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                fillColor: Colors.grey.shade100,
+              ),
+              maxLength: 6,
+            ),
+          ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Batal'),
+            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -2563,6 +3341,7 @@ class _PvPMenuScreenState extends State<PvPMenuScreen> {
                       builder: (context) => PvPBattleArena(
                         roomCode: roomCode,
                         playerMonster: widget.party.first,
+                        party: widget.party,
                         isHost: false,
                       ),
                     ),
@@ -2577,7 +3356,11 @@ class _PvPMenuScreenState extends State<PvPMenuScreen> {
                 }
               }
             },
-            child: const Text('Gabung'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.indigo,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Gabung Pertarungan'),
           ),
         ],
       ),
@@ -2594,44 +3377,164 @@ class _PvPMenuScreenState extends State<PvPMenuScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('PvP Battle'),
-        backgroundColor: Colors.purple.shade400,
-        foregroundColor: Colors.white,
+        title: const Text(
+          'PvP Battle',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: Colors.black87,
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ElevatedButton.icon(
-                icon: const Icon(Icons.add_box_rounded),
-                label: const Text('Buat Room'),
-                onPressed: _createRoom,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  textStyle: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Arena Multiplayer',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Tantang temanmu dan buktikan siapa yang terkuat secara online!',
+              style: TextStyle(fontSize: 14, color: Colors.black54),
+            ),
+            const SizedBox(height: 32),
+            // Card 1: Buat Room
+            GestureDetector(
+              onTap: _createRoom,
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.orange.shade600,
+                      Colors.deepOrange.shade400,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.orange.withOpacity(0.4),
+                      blurRadius: 15,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.add_box_rounded,
+                        color: Colors.white,
+                        size: 40,
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Buat Room',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Buat arena baru dan bagikan kodemu.',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios, color: Colors.white),
+                  ],
                 ),
               ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.sensor_door_rounded),
-                label: const Text('Gabung Room'),
-                onPressed: _joinRoom,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  textStyle: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+            ),
+            const SizedBox(height: 24),
+            // Card 2: Gabung Room
+            GestureDetector(
+              onTap: _joinRoom,
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.indigo.shade500, Colors.blue.shade400],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.blue.withOpacity(0.4),
+                      blurRadius: 15,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.sensor_door_rounded,
+                        color: Colors.white,
+                        size: 40,
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Gabung Room',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Masukkan kode dan tantang temanmu.',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios, color: Colors.white),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -2644,12 +3547,14 @@ class _PvPMenuScreenState extends State<PvPMenuScreen> {
 class PvPBattleArena extends StatefulWidget {
   final String roomCode;
   final Monster playerMonster;
+  final List<Monster> party;
   final bool isHost;
 
   const PvPBattleArena({
     super.key,
     required this.roomCode,
     required this.playerMonster,
+    required this.party,
     required this.isHost,
   });
 
@@ -2677,11 +3582,24 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
   int _localTurnCount = 0;
   int _lastSpecialCardTurn = -14;
   bool _isProcessingTurn = false;
+  bool _dialogShown = false;
+
+  // State Party Switch
+  late Monster _activeMonster;
+  Map<Monster, int> _partyHp = {};
+  Map<Monster, int> _partyStamina = {};
+  bool _isSwitchMode = false;
 
   @override
   void initState() {
     super.initState();
-    _oldMyHp = widget.playerMonster.hp;
+    _activeMonster = widget.playerMonster;
+    _oldMyHp = _activeMonster.hp;
+
+    for (var m in widget.party) {
+      _partyHp[m] = m.hp;
+      _partyStamina[m] = m.stamina;
+    }
 
     _cardAnimationController = AnimationController(
       vsync: this,
@@ -2690,8 +3608,8 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     _clashController = AnimationController(
       vsync: this,
       duration: const Duration(
-        milliseconds: 1400,
-      ), // Diperlama untuk 2 fase animasi
+        milliseconds: 1800,
+      ), // Diperlama untuk animasi garis clash
     );
     _myShakeController = AnimationController(
       vsync: this,
@@ -2706,12 +3624,14 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
       curve: Curves.easeOut,
     );
 
+    // Animasi membelah layar (Clash) harus dijalanakan untuk Host maupun Join User (Guest)
+    _clashController.forward();
+
     // Jika sebagai host (giliran pertama), langsung draw kartu
     if (widget.isHost) {
       _localTurnCount = 1;
       _drawCards();
       _cardAnimationController.forward();
-      _clashController.forward();
     }
   }
 
@@ -2805,7 +3725,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
   // Menarik 3 kartu acak
   void _drawCards() {
     final random = Random();
-    final moves = widget.playerMonster.moves;
+    final moves = _activeMonster.moves;
     _currentCards.clear();
 
     final specialMoves = moves
@@ -2910,10 +3830,10 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     // Bonus damage 10% untuk serangan elemen jika musuh sedang terkena Burn
     if ((defender['burnTurns'] ?? 0) > 0 && move.type == MoveType.elemental) {
       finalDamageDouble *= 1.1;
-      typeLog += " (Bonus Burn +10% DMG!)";
+      typeLog += " (+10% DMG Burn!)";
       if (moveElement == MonsterElement.Api) {
         finalDamageDouble += 2;
-        typeLog += " (+2 DMG Api!)";
+        typeLog += " (+2 DMG Api)";
       }
     }
 
@@ -2955,11 +3875,10 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     if (myBind > 0 || myParalysis > 0) {
       if (myBind > 0) {
         myBind--;
-        statusLog = "${myData['name']} terikat dan tidak bisa bergerak! ";
+        statusLog = "${myData['name']} Terikat! ";
       } else {
         myParalysis--;
-        statusLog =
-            "${myData['name']} terkena Paralysis dan tidak bisa bergerak! ";
+        statusLog = "${myData['name']} Paralysis! ";
       }
       isSkippingTurn = true;
     }
@@ -2968,7 +3887,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
       if (myBurn > 0) {
         myHp = max(0, myHp - 5);
         myBurn--;
-        statusLog += "Terkena 5 damage Burn. ";
+        statusLog += "Kena 5 DMG Burn. ";
       }
 
       await _firestore.collection('rooms').doc(widget.roomCode).update({
@@ -2977,10 +3896,11 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
         '$myRole.bindTurns': myBind,
         '$myRole.paralysisTurns': myParalysis,
         '$myRole.invulnerableTurns': myInvulnerable,
-        'currentTurn': myHp <= 0 ? 'finished' : enemyRole,
+        'currentTurn': myHp <= 0
+            ? myRole
+            : enemyRole, // Jika mati terkena status, beri kesempatan switch
         'turnCount': FieldValue.increment(1),
         'log': statusLog.trim(),
-        'status': myHp <= 0 ? 'finished' : 'playing',
       });
       _isProcessingTurn = false;
       return;
@@ -2990,14 +3910,13 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     if (myBurn > 0) {
       myHp = max(0, myHp - 5);
       myBurn--;
-      statusLog = "Kamu terkena 5 damage Burn! ";
+      statusLog = "Kena 5 DMG Burn! ";
       if (myHp <= 0) {
         await _firestore.collection('rooms').doc(widget.roomCode).update({
           '$myRole.hp': 0,
           '$myRole.burnTurns': myBurn,
           '$myRole.invulnerableTurns': myInvulnerable,
           '$myRole.paralysisTurns': myParalysis,
-          'status': 'finished',
           'log': statusLog + "${myData['name']} kehabisan HP karena Burn!",
         });
         _isProcessingTurn = false;
@@ -3033,9 +3952,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
         '$myRole.invulnerableTurns': myInvulnerable,
         'currentTurn': enemyRole,
         'turnCount': FieldValue.increment(1),
-        'log':
-            statusLog +
-            "${myData['name']} fokus dan memulihkan ${-move.cost} stamina!",
+        'log': statusLog + "${myData['name']} pulihkan ${-move.cost} SP!",
       });
       _isProcessingTurn = false;
       return;
@@ -3048,29 +3965,29 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     String effectLog = "";
     if (move.name == 'Flame Spin' || move.effect == 'Burn 3 turn') {
       enemyBurn = 3;
-      effectLog = " Musuh terkena Burn!";
+      effectLog = " Musuh Burn!";
     } else if (move.name == 'Bind' || move.effect == 'Bind 1 turn') {
       enemyBind = 1;
       effectLog = " Musuh Terikat!";
     } else if (move.name == 'Paralysis' || move.effect == 'Paralysis 1 turn') {
       enemyParalysis = 1;
-      effectLog = " Musuh terkena Paralysis!";
+      effectLog = " Musuh Paralysis!";
     } else if (move.name == 'Grounding' || move.effect == 'Miss 2 turn') {
       myInvulnerable = 2;
-      effectLog = " Kamu bersembunyi (Invulnerable 2 Turn)!";
+      effectLog = " Sembunyi 2 Turn!";
     } else if (move.name == 'Fly Away' || move.effect == 'Miss 1 turn') {
       myInvulnerable = 1;
-      effectLog = " Kamu terbang tinggi (Invulnerable 1 Turn)!";
+      effectLog = " Terbang 1 Turn!";
     } else if (move.name == 'Absorb' || move.effect == 'Drain HP & Heal') {
       int combo = min(myAbsorb, 3);
       int bonus = (combo - 1) * 2;
       damage += bonus; // Tambahkan bonus combo
       int healAmount = damage; // Heal disesuaikan dengan damage
       myHp = min((myData['maxHp'] as num).toInt(), myHp + healAmount);
-      effectLog = " Kamu menyerap $healAmount HP!";
+      effectLog = " Serap $healAmount HP!";
     }
     if (move.cost < 0 && move.type != MoveType.recover) {
-      effectLog += " Kamu memulihkan ${-move.cost} stamina!";
+      effectLog += " Pulih ${-move.cost} SP!";
     }
 
     enemyHp = max(0, enemyHp - damage);
@@ -3088,13 +4005,81 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
       '$enemyRole.bindTurns': enemyBind,
       '$enemyRole.paralysisTurns': enemyParalysis,
       '$enemyRole.invulnerableTurns': enemyInvulnerable,
-      'currentTurn': enemyHp <= 0 ? 'finished' : enemyRole,
+      'currentTurn':
+          enemyRole, // Alihkan turn ke musuh agar dia bisa membalas/switch
       'turnCount': FieldValue.increment(1),
       'log':
           statusLog +
-          "${myData['name']} menggunakan ${move.name}!$elementalLog$effectLog",
-      'status': enemyHp <= 0 ? 'finished' : 'playing',
+          "${myData['name']} pakai ${move.name}!$elementalLog$effectLog",
     });
+    _isProcessingTurn = false;
+  }
+
+  void _checkPlayerFaint() {
+    bool hasAliveMonster = widget.party.any((m) => _partyHp[m]! > 0);
+    if (hasAliveMonster) {
+      if (!_isSwitchMode) {
+        setState(() {
+          _isSwitchMode = true;
+        });
+      }
+    } else {
+      if (!_isProcessingTurn) {
+        _isProcessingTurn = true;
+        _firestore
+            .collection('rooms')
+            .doc(widget.roomCode)
+            .update({
+              'status': 'finished',
+              'log': 'Semua monster kehabisan tenaga!',
+            })
+            .then((_) => _isProcessingTurn = false);
+      }
+    }
+  }
+
+  void _switchMonster(Monster newMonster, Map<String, dynamic> myData) async {
+    if (_isProcessingTurn) return;
+    if (newMonster == _activeMonster) return;
+    if (_partyHp[newMonster]! <= 0) return;
+
+    _isProcessingTurn = true;
+    bool isFaintSwitch = myData['hp'] <= 0;
+
+    setState(() {
+      _activeMonster = newMonster;
+      _isSwitchMode = false;
+      _drawCards(); // Draw kartu baru untuk monster terpilih
+    });
+
+    String myRole = widget.isHost ? 'host' : 'guest';
+    String enemyRole = widget.isHost ? 'guest' : 'host';
+
+    // Apabila switch karena dipaksa (monster mati), kita tidak membuang giliran
+    String nextTurn = isFaintSwitch ? myRole : enemyRole;
+
+    await _firestore.collection('rooms').doc(widget.roomCode).update({
+      '$myRole.name': newMonster.name,
+      '$myRole.hp': _partyHp[newMonster],
+      '$myRole.maxHp': newMonster.hp,
+      '$myRole.stamina': _partyStamina[newMonster],
+      '$myRole.maxStamina': newMonster.stamina,
+      '$myRole.level': newMonster.level,
+      '$myRole.element': newMonster.element.name,
+      '$myRole.attack': newMonster.attack,
+      '$myRole.defense': newMonster.defense,
+      '$myRole.burnTurns': 0, // Reset status effects on switch
+      '$myRole.bindTurns': 0,
+      '$myRole.paralysisTurns': 0,
+      '$myRole.invulnerableTurns': 0,
+      '$myRole.consecutiveAbsorb': 0,
+      'currentTurn': nextTurn,
+      'turnCount': isFaintSwitch
+          ? FieldValue.increment(0)
+          : FieldValue.increment(1),
+      'log': "Kamu mengeluarkan ${newMonster.name}!",
+    });
+
     _isProcessingTurn = false;
   }
 
@@ -3102,25 +4087,22 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     // Simulasi hadiah kecil untuk PvP agar ada rasa penghargaan
     int exp = won ? 15 : 5;
     List<Map<String, num>> allLevelUps = [];
-    int initialLevel = widget.playerMonster.level;
+    int initialLevel = _activeMonster.level;
 
     if (won) {
-      widget.playerMonster.currentExp += exp;
-      while (widget.playerMonster.currentExp >=
-          widget.playerMonster.expToNextLevel) {
+      _activeMonster.currentExp += exp;
+      while (_activeMonster.currentExp >= _activeMonster.expToNextLevel) {
         int remainingExp =
-            widget.playerMonster.currentExp -
-            widget.playerMonster.expToNextLevel;
-        allLevelUps.add(widget.playerMonster.levelUp());
-        widget.playerMonster.currentExp = remainingExp;
-        widget.playerMonster.expToNextLevel = Monster.calculateExpForNextLevel(
-          widget.playerMonster.level,
+            _activeMonster.currentExp - _activeMonster.expToNextLevel;
+        allLevelUps.add(_activeMonster.levelUp());
+        _activeMonster.currentExp = remainingExp;
+        _activeMonster.expToNextLevel = Monster.calculateExpForNextLevel(
+          _activeMonster.level,
         );
       }
     }
 
-    // Simpan progress PvP ke memori internal HP
-    SaveManager.saveParty([widget.playerMonster]);
+    SaveManager.saveParty(widget.party);
 
     showDialog(
       context: context,
@@ -3159,7 +4141,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                 if (allLevelUps.isNotEmpty) {
                   _showLevelUpDialog(
                     allLevelUps,
-                    widget.playerMonster,
+                    _activeMonster,
                     initialLevel,
                   ).then((_) {
                     Navigator.pop(context); // Kembali ke menu
@@ -3411,6 +4393,20 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
             int currentMyHp = myData['hp'];
             int currentEnemyHp = enemyData['hp'];
 
+            _partyHp[_activeMonster] = currentMyHp;
+            _partyStamina[_activeMonster] = myData['stamina'];
+
+            final bool isFinished = data['status'] == 'finished';
+            final bool isMyTurn =
+                data['currentTurn'] == (widget.isHost ? 'host' : 'guest');
+
+            // Paksa buka switch panel kalau mati
+            if (isMyTurn && currentMyHp <= 0 && !isFinished) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) _checkPlayerFaint();
+              });
+            }
+
             if (_oldMyHp != -1 && currentMyHp < _oldMyHp) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted) {
@@ -3435,10 +4431,16 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
               _oldEnemyHp = currentEnemyHp;
             });
 
-            final bool isMyTurn =
-                data['currentTurn'] == (widget.isHost ? 'host' : 'guest');
+            // Cek kondisi akhir pertandingan dan luncurkan dialog End Game PvP
+            if (isFinished && !_dialogShown) {
+              _dialogShown = true;
+              bool won = currentMyHp > 0;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) _showEndGameDialog(won);
+              });
+            }
+
             final String battleLog = data['log'] ?? "Pertarungan dimulai!";
-            final bool isFinished = data['status'] == 'finished';
             int serverTurnCount = data['turnCount'] ?? 1;
 
             // Cek Pergantian Turn untuk Draw Card
@@ -3459,93 +4461,150 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                 Expanded(
                   flex: 5,
                   child: Stack(
+                    clipBehavior:
+                        Clip.none, // Cegah garis putih terpotong batas luar
                     children: [
                       // Animasi Clash Layar Diagonal
                       Positioned.fill(
-                        child: AnimatedBuilder(
-                          animation: _clashController,
-                          builder: (context, child) {
-                            final linearValue = _clashController.value;
-                            // 40% Waktu pertama: Meluncur sebagai persegi
-                            final slideProgress = Curves.easeOut.transform(
-                              (linearValue / 0.4).clamp(0.0, 1.0),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final boxSize = Size(
+                              constraints.maxWidth,
+                              constraints.maxHeight,
                             );
-                            // 60% Waktu sisanya: Membelah (morph) menjadi segitiga
-                            final morphProgress = Curves.easeOutBack.transform(
-                              ((linearValue - 0.4) / 0.6).clamp(0.0, 1.0),
-                            );
+                            return AnimatedBuilder(
+                              animation: _clashController,
+                              builder: (context, child) {
+                                final linearValue = _clashController.value;
+                                // 35% Waktu pertama: Meluncur sebagai persegi dari Atas & Bawah
+                                final slideProgress = Curves.easeOut.transform(
+                                  (linearValue / 0.35).clamp(0.0, 1.0),
+                                );
 
-                            final slideYTop =
-                                -(size.height / 2) * (1 - slideProgress);
-                            final slideYBottom =
-                                (size.height / 2) * (1 - slideProgress);
+                                // 15% Waktu (0.35 - 0.50): Garis putih memanjang dari tengah
+                                final lineProgress = Curves.easeOut.transform(
+                                  ((linearValue - 0.35) / 0.15).clamp(0.0, 1.0),
+                                );
 
-                            return Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                // Musuh (Top)
-                                Transform.translate(
-                                  offset: Offset(0, slideYTop),
-                                  child: ClipPath(
-                                    clipper: DynamicTopClipper(morphProgress),
-                                    child: Container(
-                                      color: _getElementColor(
-                                        _getElement(enemyData['element']),
+                                // 50% Waktu sisanya (0.50 - 1.0): Membelah (morph) menjadi segitiga
+                                final morphProgress = Curves.easeOutBack
+                                    .transform(
+                                      ((linearValue - 0.50) / 0.50).clamp(
+                                        0.0,
+                                        1.0,
                                       ),
-                                      child: Stack(
-                                        children: [
-                                          Positioned(
-                                            top: -40,
-                                            right: -40,
-                                            child: Icon(
-                                              _getElementIcon(
-                                                _getElement(
-                                                  enemyData['element'],
+                                    );
+
+                                // Hitung rotasi dan panjang garis berdasarkan progres morphing
+                                final dy = boxSize.height * morphProgress;
+                                final dx = boxSize.width;
+                                final lineAngle = atan2(dy, dx);
+                                // Kalikan 2.5 agar garis sangat panjang dan pasti membelah hingga ujung layar
+                                final lineWidth = sqrt(dx * dx + dy * dy) * 2.5;
+
+                                final slideYTop =
+                                    -(boxSize.height / 2) * (1 - slideProgress);
+                                final slideYBottom =
+                                    (boxSize.height / 2) * (1 - slideProgress);
+
+                                return Stack(
+                                  fit: StackFit.expand,
+                                  clipBehavior: Clip.none, // Izinkan Overflow
+                                  children: [
+                                    // Musuh (Top)
+                                    Transform.translate(
+                                      offset: Offset(0, slideYTop),
+                                      child: ClipPath(
+                                        clipper: DynamicTopClipper(
+                                          morphProgress,
+                                        ),
+                                        child: Container(
+                                          color: _getElementColor(
+                                            _getElement(enemyData['element']),
+                                          ),
+                                          child: Stack(
+                                            children: [
+                                              Positioned(
+                                                top: -40,
+                                                right: -40,
+                                                child: Icon(
+                                                  _getElementIcon(
+                                                    _getElement(
+                                                      enemyData['element'],
+                                                    ),
+                                                  ),
+                                                  size: 250,
+                                                  color: Colors.white
+                                                      .withOpacity(0.1),
                                                 ),
                                               ),
-                                              size: 250,
-                                              color: Colors.white.withOpacity(
-                                                0.1,
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    // Pemain (Bottom)
+                                    Transform.translate(
+                                      offset: Offset(0, slideYBottom),
+                                      child: ClipPath(
+                                        clipper: DynamicBottomClipper(
+                                          morphProgress,
+                                        ),
+                                        child: Container(
+                                          color: _getElementColor(
+                                            _getElement(myData['element']),
+                                          ),
+                                          child: Stack(
+                                            children: [
+                                              Positioned(
+                                                bottom: -40,
+                                                left: -40,
+                                                child: Icon(
+                                                  _getElementIcon(
+                                                    _getElement(
+                                                      myData['element'],
+                                                    ),
+                                                  ),
+                                                  size: 250,
+                                                  color: Colors.white
+                                                      .withOpacity(0.1),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    // Garis Putih (Clash Line)
+                                    if (lineProgress > 0)
+                                      Center(
+                                        child: OverflowBox(
+                                          maxWidth: double.infinity,
+                                          maxHeight: double.infinity,
+                                          child: Transform.rotate(
+                                            angle: lineAngle,
+                                            child: Container(
+                                              height:
+                                                  4, // Tetap tipis, tidak ikut melebar
+                                              width: lineWidth * lineProgress,
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.white
+                                                        .withOpacity(0.8),
+                                                    blurRadius: 15,
+                                                    spreadRadius: 2,
+                                                  ),
+                                                ],
                                               ),
                                             ),
                                           ),
-                                        ],
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                                ),
-                                // Pemain (Bottom)
-                                Transform.translate(
-                                  offset: Offset(0, slideYBottom),
-                                  child: ClipPath(
-                                    clipper: DynamicBottomClipper(
-                                      morphProgress,
-                                    ),
-                                    child: Container(
-                                      color: _getElementColor(
-                                        _getElement(myData['element']),
-                                      ),
-                                      child: Stack(
-                                        children: [
-                                          Positioned(
-                                            bottom: -40,
-                                            left: -40,
-                                            child: Icon(
-                                              _getElementIcon(
-                                                _getElement(myData['element']),
-                                              ),
-                                              size: 250,
-                                              color: Colors.white.withOpacity(
-                                                0.1,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                                  ],
+                                );
+                              },
                             );
                           },
                         ),
@@ -3604,18 +4663,72 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                 ),
 
                 // BATTLE LOG
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  color: Colors.black87,
-                  child: TypewriterText(
-                    text: battleLog,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontStyle: FontStyle.italic,
-                    ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 8.0,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 24,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black87,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white24, width: 1),
+                          ),
+                          child: TypewriterText(
+                            text: battleLog,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (isMyTurn) ...[
+                        const SizedBox(width: 12),
+                        GestureDetector(
+                          onTap: () {
+                            if (currentMyHp <= 0)
+                              return; // Pemain dipaksa harus memilih monster jika mati
+                            setState(() {
+                              _isSwitchMode = !_isSwitchMode;
+                            });
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: _isSwitchMode
+                                  ? Colors.blueAccent
+                                  : Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 6,
+                                  offset: Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              _isSwitchMode ? Icons.close : Icons.swap_horiz,
+                              color: _isSwitchMode
+                                  ? Colors.white
+                                  : Colors.blueAccent,
+                              size: 28,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
 
@@ -3626,27 +4739,81 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                     padding: const EdgeInsets.all(16),
                     color: Colors.grey.shade900,
                     child: isFinished
-                        ? Center(
-                            child: ElevatedButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text(
-                                'Pertarungan Selesai - Kembali',
+                        ? const Center(
+                            child: Text(
+                              'Pertarungan Selesai',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
                               ),
                             ),
                           )
                         : isMyTurn
-                        ? Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: List.generate(_currentCards.length, (
-                              index,
-                            ) {
-                              return _buildAnimatedCard(
-                                _currentCards[index],
-                                myData,
-                                enemyData,
-                                index,
-                              );
-                            }),
+                        ? ClipRect(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 300),
+                              transitionBuilder:
+                                  (Widget child, Animation<double> animation) {
+                                    final isIncoming =
+                                        child.key ==
+                                        (_isSwitchMode
+                                            ? const ValueKey('switch_mode')
+                                            : const ValueKey('moves_mode'));
+
+                                    if (isIncoming) {
+                                      return SlideTransition(
+                                        position: Tween<Offset>(
+                                          begin: const Offset(1.0, 0.0),
+                                          end: Offset.zero,
+                                        ).animate(animation),
+                                        child: child,
+                                      );
+                                    } else {
+                                      return SlideTransition(
+                                        position: Tween<Offset>(
+                                          begin: const Offset(-1.0, 0.0),
+                                          end: Offset.zero,
+                                        ).animate(animation),
+                                        child: child,
+                                      );
+                                    }
+                                  },
+                              child: _isSwitchMode
+                                  ? SingleChildScrollView(
+                                      key: const ValueKey('switch_mode'),
+                                      scrollDirection: Axis.horizontal,
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: List.generate(
+                                          widget.party.length,
+                                          (index) {
+                                            return _buildMonsterSwitchCard(
+                                              widget.party[index],
+                                              index,
+                                              myData,
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    )
+                                  : Row(
+                                      key: const ValueKey('moves_mode'),
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceEvenly,
+                                      children: List.generate(
+                                        _currentCards.length,
+                                        (index) {
+                                          return _buildAnimatedCard(
+                                            _currentCards[index],
+                                            myData,
+                                            enemyData,
+                                            index,
+                                          );
+                                        },
+                                      ),
+                                    ),
+                            ),
                           )
                         : const Center(
                             child: Text(
@@ -3923,6 +5090,152 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     );
   }
 
+  Widget _buildMonsterSwitchCard(
+    Monster monster,
+    int index,
+    Map<String, dynamic> myData,
+  ) {
+    bool isDead = _partyHp[monster]! <= 0;
+    bool isActive = monster == _activeMonster;
+    bool disabled = isDead || isActive;
+    Color bgColor = monster.elementColor;
+
+    return GestureDetector(
+      onTap: disabled ? null : () => _switchMonster(monster, myData),
+      child: Opacity(
+        opacity: disabled ? 0.6 : 1.0,
+        child: Container(
+          width: 130,
+          height: 190,
+          margin: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.8), width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.2),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(14),
+                    topRight: Radius.circular(14),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'LVL ${monster.level}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      isActive ? 'ACTIVE' : (isDead ? 'FAINTED' : 'SWAP'),
+                      style: TextStyle(
+                        color: isActive
+                            ? Colors.amber
+                            : (isDead ? Colors.red : Colors.white),
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _getElementIcon(monster.element),
+                        size: 48,
+                        color: Colors.white.withOpacity(0.9),
+                      ),
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                        child: Text(
+                          monster.name,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withOpacity(0.4),
+                                blurRadius: 2,
+                                offset: const Offset(1, 1),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.2),
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(14),
+                    bottomRight: Radius.circular(14),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      'HP',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    LinearProgressIndicator(
+                      value: _partyHp[monster]! / monster.hp,
+                      backgroundColor: Colors.black26,
+                      color: isDead ? Colors.red : Colors.green,
+                      minHeight: 6,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${_partyHp[monster]}/${monster.hp}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildStatusEffectIndicator(
     String name,
     int currentTurnsLeft,
@@ -3960,8 +5273,8 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     IconData icon = Icons.sports_mma;
 
     if (move.type == MoveType.elemental) {
-      bgColor = widget.playerMonster.elementColor;
-      icon = _getElementIcon(widget.playerMonster.element);
+      bgColor = _activeMonster.elementColor;
+      icon = _getElementIcon(_activeMonster.element);
     } else if (move.type == MoveType.special) {
       bgColor = Colors.purple.shade400;
       icon = Icons.auto_awesome;
