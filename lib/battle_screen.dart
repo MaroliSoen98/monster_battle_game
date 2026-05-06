@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:async';
 import 'package:monster_battle_game/main.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ============================================================================
 // 1. MENU BATTLE UTAMA
@@ -228,8 +229,87 @@ class _BattleMenuScreenState extends State<BattleMenuScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 24),
+            // Sub Menu: Infinite Tower
+            GestureDetector(
+              onTap: _startInfiniteTower,
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.orange.shade600, Colors.orange.shade400],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.orange.withOpacity(0.4),
+                      blurRadius: 15,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.account_tree,
+                        color: Colors.white,
+                        size: 40,
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Infinite Tower',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Hadapi 100 trainer dari level 1-100.\nHadiah meningkat seiring level!',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios, color: Colors.white),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _startInfiniteTower() {
+    if (widget.party.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Party kamu kosong!')));
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => InfiniteTowerScreen(party: widget.party),
       ),
     );
   }
@@ -285,7 +365,7 @@ class _TypewriterTextState extends State<TypewriterText> {
     setState(() {
       _displayedText = '';
     });
-    
+
     int charIndex = 0;
     _timer = Timer.periodic(const Duration(milliseconds: 15), (timer) {
       if (charIndex < widget.text.length) {
@@ -1243,10 +1323,10 @@ class _WildBattleArenaState extends State<WildBattleArena>
       setState(() {
         if (_playerBindTurns > 0) {
           _playerBindTurns--;
-        _battleLog = "Kamu tak bisa gerak karena Terikat!";
+          _battleLog = "Kamu tak bisa gerak karena Terikat!";
         } else {
           _playerParalysisTurns--;
-        _battleLog = "Kamu tak bisa gerak karena Paralysis!";
+          _battleLog = "Kamu tak bisa gerak karena Paralysis!";
         }
         _isPlayerTurn = false;
       });
@@ -1485,7 +1565,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
           );
 
           if (chosenMove.type == MoveType.recover) {
-            _battleLog = statusLog + "${_enemyMonster.name} pulihkan ${-chosenMove.cost} SP!";
+            _battleLog =
+                statusLog +
+                "${_enemyMonster.name} pulihkan ${-chosenMove.cost} SP!";
           } else {
             // Attack move
             final damageResult = _calculateDamage(
@@ -5389,6 +5471,808 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// INFINITE TOWER SCREEN
+// ============================================================================
+class InfiniteTowerScreen extends StatefulWidget {
+  final List<Monster> party;
+
+  const InfiniteTowerScreen({super.key, required this.party});
+
+  @override
+  State<InfiniteTowerScreen> createState() => _InfiniteTowerScreenState();
+}
+
+class _InfiniteTowerScreenState extends State<InfiniteTowerScreen> {
+  int _highestLevel = 0;
+  late ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    _loadProgress();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProgress() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _highestLevel = prefs.getInt('infinite_tower_progress') ?? 0;
+    });
+  }
+
+  Future<void> _saveProgress(int level) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('infinite_tower_progress', level);
+    setState(() {
+      _highestLevel = level;
+    });
+  }
+
+  int _calculateReward(int level) {
+    // Hadiah meningkat seiring level: base 100 + 50 per level
+    return 100 + (level - 1) * 50;
+  }
+
+  void _startBattle(int level) {
+    if (widget.party.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Party kamu kosong!')));
+      return;
+    }
+
+    // Generate trainer monster dengan level sesuai
+    final trainerMonster = _generateTrainerMonster(level);
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => InfiniteTowerBattleArena(
+          playerParty: widget.party,
+          trainerMonster: trainerMonster,
+          towerLevel: level,
+          onBattleEnd: (won) async {
+            if (won) {
+              // Jika menang, update progress jika level lebih tinggi
+              if (level > _highestLevel) {
+                await _saveProgress(level);
+              }
+              // Berikan hadiah
+              final reward = _calculateReward(level);
+              _showRewardDialog(reward);
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  Monster _generateTrainerMonster(int level) {
+    final random = Random();
+    final elements = [
+      MonsterElement.Api,
+      MonsterElement.Air,
+      MonsterElement.Tumbuhan,
+      MonsterElement.Listrik,
+      MonsterElement.Tanah,
+      MonsterElement.Terbang,
+    ];
+    final selectedElement = elements[random.nextInt(elements.length)];
+
+    // Trainer monster lebih kuat per level
+    int hp = 80 + level * 5;
+    double attack = 80 + level * 3.0;
+    double defense = 70 + level * 2.5;
+    int speed = 60 + level * 2;
+    int stamina = 60 + level * 3;
+
+    // Moves dengan power yang meningkat
+    List<MonsterMove> moves = [
+      MonsterMove(
+        name: 'Trainer Strike',
+        type: MoveType.normal,
+        power: 45 + level,
+        cost: -10,
+      ),
+      MonsterMove(
+        name: 'Elemental Blast',
+        type: MoveType.elemental,
+        power: 50 + level,
+        cost: 15,
+      ),
+      MonsterMove(
+        name: 'Special Attack',
+        type: MoveType.special,
+        power: 40 + level,
+        effect: level >= 50 ? 'Burn 2 turns' : null,
+        cost: 20,
+      ),
+    ];
+
+    return Monster(
+      name: 'Trainer Lv.$level',
+      element: selectedElement,
+      imagePath: 'assets/images/trainer_monster.png', // Placeholder
+      hp: hp,
+      attack: attack,
+      defense: defense,
+      speed: speed,
+      stamina: stamina,
+      level: level,
+      moves: moves,
+    );
+  }
+
+  void _showRewardDialog(int reward) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Selamat!'),
+        content: Text('Kamu mendapatkan $reward koin sebagai hadiah!'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Infinite Tower'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: Colors.black87,
+      ),
+      body: Column(
+        children: [
+          // Progress Info
+          Container(
+            padding: const EdgeInsets.all(16),
+            margin: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade100,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.orange.shade300),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.emoji_events,
+                  color: Colors.orange.shade700,
+                  size: 32,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Level Tertinggi: $_highestLevel',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Text(
+                        'Hadapi trainer dari level 1-100!',
+                        style: TextStyle(fontSize: 14, color: Colors.black54),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Tower Levels Grid
+          Expanded(
+            child: GridView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(16),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 5,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+                childAspectRatio: 1,
+              ),
+              itemCount: 100,
+              itemBuilder: (context, index) {
+                final level = index + 1;
+                final isUnlocked = level <= _highestLevel + 1;
+                final isCompleted = level <= _highestLevel;
+
+                return GestureDetector(
+                  onTap: isUnlocked ? () => _startBattle(level) : null,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isCompleted
+                          ? Colors.green.shade200
+                          : isUnlocked
+                          ? Colors.blue.shade200
+                          : Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isCompleted
+                            ? Colors.green.shade400
+                            : isUnlocked
+                            ? Colors.blue.shade400
+                            : Colors.grey.shade400,
+                        width: 2,
+                      ),
+                      boxShadow: isUnlocked
+                          ? [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '$level',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: isUnlocked ? Colors.black : Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${_calculateReward(level)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isUnlocked ? Colors.black54 : Colors.grey,
+                          ),
+                        ),
+                        if (isCompleted)
+                          const Icon(
+                            Icons.check_circle,
+                            color: Colors.green,
+                            size: 16,
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// INFINITE TOWER BATTLE ARENA
+// ============================================================================
+class InfiniteTowerBattleArena extends StatefulWidget {
+  final List<Monster> playerParty;
+  final Monster trainerMonster;
+  final int towerLevel;
+  final Function(bool won) onBattleEnd;
+
+  const InfiniteTowerBattleArena({
+    super.key,
+    required this.playerParty,
+    required this.trainerMonster,
+    required this.towerLevel,
+    required this.onBattleEnd,
+  });
+
+  @override
+  State<InfiniteTowerBattleArena> createState() =>
+      _InfiniteTowerBattleArenaState();
+}
+
+class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
+    with TickerProviderStateMixin {
+  late Monster _activeMonster;
+  late Monster _trainerMonster;
+
+  Map<Monster, int> _partyHp = {};
+  Map<Monster, int> _partyStamina = {};
+
+  late int _playerHp;
+  late int _trainerHp;
+  late int _oldPlayerHp;
+  late int _oldTrainerHp;
+  late int _playerStamina, _trainerStamina;
+
+  List<MonsterMove> _currentCards = [];
+  bool _isPlayerTurn = true;
+  String _battleLog = "";
+
+  late AnimationController _cardAnimationController;
+  late Animation<double> _cardAnimation;
+  late AnimationController _clashController;
+  late AnimationController _playerShakeController;
+  late AnimationController _trainerShakeController;
+
+  int _playerDamageValue = 0;
+  int _trainerDamageValue = 0;
+
+  int _turnCount = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _activeMonster = widget.playerParty.first;
+    for (var m in widget.playerParty) {
+      _partyHp[m] = m.hp;
+      _partyStamina[m] = m.stamina;
+    }
+
+    _trainerMonster = widget.trainerMonster;
+    _playerHp = _partyHp[_activeMonster]!;
+    _trainerHp = _trainerMonster.hp;
+    _oldPlayerHp = _playerHp;
+    _oldTrainerHp = _trainerHp;
+    _playerStamina = _partyStamina[_activeMonster]!;
+    _trainerStamina = _trainerMonster.stamina;
+    _battleLog = "Pertarungan Tower Level ${widget.towerLevel} dimulai!";
+
+    _cardAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+    _clashController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+    _playerShakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _trainerShakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _cardAnimation = CurvedAnimation(
+      parent: _cardAnimationController,
+      curve: Curves.easeOut,
+    );
+    _cardAnimationController.forward();
+    _clashController.forward();
+    _drawCards();
+  }
+
+  @override
+  void dispose() {
+    _cardAnimationController.dispose();
+    _clashController.dispose();
+    _playerShakeController.dispose();
+    _trainerShakeController.dispose();
+    super.dispose();
+  }
+
+  void _syncPartyStats() {
+    _partyHp[_activeMonster] = _playerHp;
+    _partyStamina[_activeMonster] = _playerStamina;
+  }
+
+  void _drawCards() {
+    final random = Random();
+    final moves = _activeMonster.moves;
+    _currentCards.clear();
+
+    final normalMoves = moves.where((m) => m.type == MoveType.normal).toList();
+    final elementalMoves = moves
+        .where((m) => m.type == MoveType.elemental)
+        .toList();
+    final specialMoves = moves
+        .where((m) => m.type == MoveType.special)
+        .toList();
+    final recoverMoves = moves
+        .where((m) => m.type == MoveType.recover)
+        .toList();
+
+    List<MonsterMove> availableMoves = [];
+    if (normalMoves.isNotEmpty) availableMoves.addAll(normalMoves);
+    if (elementalMoves.isNotEmpty) availableMoves.addAll(elementalMoves);
+    if (recoverMoves.isNotEmpty) availableMoves.addAll(recoverMoves);
+    if (specialMoves.isNotEmpty) availableMoves.addAll(specialMoves);
+
+    availableMoves.shuffle();
+
+    for (int i = 0; i < 3 && availableMoves.isNotEmpty; i++) {
+      _currentCards.add(availableMoves.removeAt(0));
+    }
+  }
+
+  void _executeMove(MonsterMove move) {
+    if (!_isPlayerTurn) return;
+
+    setState(() {
+      _isPlayerTurn = false;
+      _battleLog = "${_activeMonster.name} menggunakan ${move.name}!";
+    });
+
+    // Calculate damage
+    final damageResult = _calculateDamage(
+      _activeMonster,
+      _trainerMonster,
+      move,
+    );
+    final damage = damageResult['damage'] as int;
+    final log = damageResult['log'] as String;
+
+    setState(() {
+      _trainerHp -= damage;
+      _playerDamageValue = damage;
+      _battleLog += log;
+    });
+
+    // Animate damage
+    _trainerShakeController.forward(from: 0.0);
+
+    // Check if trainer defeated
+    if (_trainerHp <= 0) {
+      setState(() {
+        _trainerHp = 0;
+        _battleLog = "Kamu menang! Trainer Lv.${widget.towerLevel} dikalahkan!";
+      });
+      Future.delayed(const Duration(seconds: 2), () {
+        widget.onBattleEnd(true);
+        Navigator.of(context).pop();
+      });
+      return;
+    }
+
+    // Trainer turn after delay
+    Future.delayed(const Duration(seconds: 1), () {
+      _trainerTurn();
+    });
+  }
+
+  void _trainerTurn() {
+    final random = Random();
+    final availableMoves = _trainerMonster.moves
+        .where((m) => _trainerStamina >= m.cost.abs())
+        .toList();
+
+    if (availableMoves.isEmpty) {
+      // Trainer can't move
+      setState(() {
+        _battleLog = "Trainer kehabisan stamina!";
+        _isPlayerTurn = true;
+        _turnCount++;
+        _drawCards();
+      });
+      return;
+    }
+
+    final move = availableMoves[random.nextInt(availableMoves.length)];
+
+    setState(() {
+      _trainerStamina +=
+          move.cost; // Cost is negative, so this decreases stamina
+      _battleLog = "Trainer menggunakan ${move.name}!";
+    });
+
+    final damageResult = _calculateDamage(
+      _trainerMonster,
+      _activeMonster,
+      move,
+    );
+    final damage = damageResult['damage'] as int;
+    final log = damageResult['log'] as String;
+
+    setState(() {
+      _playerHp -= damage;
+      _trainerDamageValue = damage;
+      _battleLog += log;
+    });
+
+    _playerShakeController.forward(from: 0.0);
+
+    if (_playerHp <= 0) {
+      setState(() {
+        _playerHp = 0;
+        _battleLog = "Kamu kalah! Coba lagi di level berikutnya.";
+      });
+      Future.delayed(const Duration(seconds: 2), () {
+        widget.onBattleEnd(false);
+        Navigator.of(context).pop();
+      });
+      return;
+    }
+
+    setState(() {
+      _isPlayerTurn = true;
+      _turnCount++;
+      _drawCards();
+    });
+  }
+
+  Map<String, dynamic> _calculateDamage(
+    Monster attacker,
+    Monster defender,
+    MonsterMove move,
+  ) {
+    final random = Random();
+
+    // Elemental effectiveness
+    double typeModifier = 1.0;
+    String typeLog = "";
+
+    if (move.type == MoveType.elemental || move.type == MoveType.special) {
+      if (_isSuperEffective(attacker.element, defender.element)) {
+        typeModifier = 2.0;
+        typeLog = " Super Efektif!";
+      } else if (_isNotVeryEffective(attacker.element, defender.element)) {
+        typeModifier = 0.5;
+        typeLog = " Kurang Efektif...";
+      }
+    }
+
+    // Critical hit
+    final isCritical = random.nextInt(100) < 10;
+    final critModifier = isCritical ? 1.5 : 1.0;
+    final critLog = isCritical ? " Serangan Kritis!" : "";
+
+    // Random modifier
+    final randomModifier = 0.85 + random.nextDouble() * 0.15;
+
+    // Base damage calculation
+    final baseDamage =
+        ((2 * attacker.level / 5 + 2) *
+                move.power *
+                (attacker.attack / defender.defense) /
+                50)
+            .floor();
+    final finalDamage =
+        (baseDamage * typeModifier * critModifier * randomModifier).floor();
+
+    return {'damage': finalDamage, 'log': typeLog + critLog};
+  }
+
+  bool _isSuperEffective(MonsterElement attacker, MonsterElement defender) {
+    return (attacker == MonsterElement.Api &&
+            defender == MonsterElement.Tumbuhan) ||
+        (attacker == MonsterElement.Tumbuhan &&
+            defender == MonsterElement.Air) ||
+        (attacker == MonsterElement.Air && defender == MonsterElement.Api) ||
+        (attacker == MonsterElement.Listrik &&
+            (defender == MonsterElement.Air ||
+                defender == MonsterElement.Terbang)) ||
+        (attacker == MonsterElement.Tanah &&
+            (defender == MonsterElement.Api ||
+                defender == MonsterElement.Listrik)) ||
+        (attacker == MonsterElement.Terbang &&
+            defender == MonsterElement.Tumbuhan);
+  }
+
+  bool _isNotVeryEffective(MonsterElement attacker, MonsterElement defender) {
+    return (attacker == MonsterElement.Api && defender == MonsterElement.Air) ||
+        (attacker == MonsterElement.Tumbuhan &&
+            defender == MonsterElement.Api) ||
+        (attacker == MonsterElement.Air &&
+            defender == MonsterElement.Tumbuhan) ||
+        (attacker == MonsterElement.Listrik &&
+            defender == MonsterElement.Tanah) ||
+        (attacker == MonsterElement.Tanah &&
+            defender == MonsterElement.Tumbuhan) ||
+        (attacker == MonsterElement.Terbang &&
+            defender == MonsterElement.Listrik);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Tower Level ${widget.towerLevel}'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: Colors.black87,
+      ),
+      body: Column(
+        children: [
+          // Battle Info
+          Container(
+            padding: const EdgeInsets.all(16),
+            color: Colors.orange.shade50,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Level ${widget.towerLevel}',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text('Turn: $_turnCount', style: const TextStyle(fontSize: 16)),
+              ],
+            ),
+          ),
+
+          // Battle Area
+          Expanded(
+            child: Stack(
+              children: [
+                // Background
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.blue.shade100, Colors.blue.shade50],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                  ),
+                ),
+
+                // Trainer Monster (Top)
+                Positioned(
+                  top: 50,
+                  right: 50,
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade200,
+                          borderRadius: BorderRadius.circular(60),
+                          border: Border.all(
+                            color: Colors.red.shade400,
+                            width: 3,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.person,
+                          size: 60,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _trainerMonster.name,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      Text('HP: $_trainerHp/${_trainerMonster.hp}'),
+                      if (_trainerDamageValue > 0)
+                        Text(
+                          '-$_trainerDamageValue',
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+
+                // Player Monster (Bottom)
+                Positioned(
+                  bottom: 50,
+                  left: 50,
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade200,
+                          borderRadius: BorderRadius.circular(60),
+                          border: Border.all(
+                            color: Colors.blue.shade400,
+                            width: 3,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.pets,
+                          size: 60,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _activeMonster.name,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      Text('HP: $_playerHp/${_activeMonster.hp}'),
+                      if (_playerDamageValue > 0)
+                        Text(
+                          '-$_playerDamageValue',
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Battle Log
+          Container(
+            padding: const EdgeInsets.all(16),
+            color: Colors.grey.shade100,
+            child: Text(
+              _battleLog,
+              style: const TextStyle(fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+          ),
+
+          // Action Cards
+          if (_isPlayerTurn)
+            Container(
+              height: 120,
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: _currentCards.map((move) {
+                  return GestureDetector(
+                    onTap: () => _executeMove(move),
+                    child: Container(
+                      width: 100,
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade300),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            move.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          Text(
+                            'PWR: ${move.power}',
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                          Text(
+                            'Cost: ${move.cost}',
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
         ],
       ),
     );
