@@ -595,7 +595,8 @@ class _WildBattleArenaState extends State<WildBattleArena>
     return (attacker == MonsterElement.Api &&
             defender == MonsterElement.Tumbuhan) ||
         (attacker == MonsterElement.Tumbuhan &&
-            defender == MonsterElement.Air) ||
+            (defender == MonsterElement.Air ||
+                defender == MonsterElement.Tanah)) ||
         (attacker == MonsterElement.Air && defender == MonsterElement.Api) ||
         (attacker == MonsterElement.Listrik &&
             (defender == MonsterElement.Air ||
@@ -613,8 +614,6 @@ class _WildBattleArenaState extends State<WildBattleArena>
             defender == MonsterElement.Api) ||
         (attacker == MonsterElement.Air &&
             defender == MonsterElement.Tumbuhan) ||
-        (attacker == MonsterElement.Listrik &&
-            defender == MonsterElement.Tanah) ||
         (attacker == MonsterElement.Tanah &&
             defender == MonsterElement.Tumbuhan) ||
         (attacker == MonsterElement.Terbang &&
@@ -623,7 +622,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
 
   bool _isNoEffect(MonsterElement attacker, MonsterElement defender) {
     return (attacker == MonsterElement.Tanah &&
-        defender == MonsterElement.Terbang);
+            defender == MonsterElement.Terbang) ||
+        (attacker == MonsterElement.Listrik &&
+            defender == MonsterElement.Tanah);
   }
 
   // Menghitung damage berdasarkan formula baru
@@ -3773,7 +3774,8 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     return (attacker == MonsterElement.Api &&
             defender == MonsterElement.Tumbuhan) ||
         (attacker == MonsterElement.Tumbuhan &&
-            defender == MonsterElement.Air) ||
+            (defender == MonsterElement.Air ||
+                defender == MonsterElement.Tanah)) ||
         (attacker == MonsterElement.Air && defender == MonsterElement.Api) ||
         (attacker == MonsterElement.Listrik &&
             (defender == MonsterElement.Air ||
@@ -3791,8 +3793,6 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
             defender == MonsterElement.Api) ||
         (attacker == MonsterElement.Air &&
             defender == MonsterElement.Tumbuhan) ||
-        (attacker == MonsterElement.Listrik &&
-            defender == MonsterElement.Tanah) ||
         (attacker == MonsterElement.Tanah &&
             defender == MonsterElement.Tumbuhan) ||
         (attacker == MonsterElement.Terbang &&
@@ -3801,7 +3801,9 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
 
   bool _isNoEffect(MonsterElement attacker, MonsterElement defender) {
     return (attacker == MonsterElement.Tanah &&
-        defender == MonsterElement.Terbang);
+            defender == MonsterElement.Terbang) ||
+        (attacker == MonsterElement.Listrik &&
+            defender == MonsterElement.Tanah);
   }
 
   // Menarik 3 kartu acak
@@ -5491,18 +5493,19 @@ class InfiniteTowerScreen extends StatefulWidget {
 
 class _InfiniteTowerScreenState extends State<InfiniteTowerScreen> {
   int _highestLevel = 0;
-  late ScrollController _scrollController;
+  late PageController _pageController;
 
   @override
   void initState() {
     super.initState();
-    _scrollController = ScrollController();
+    // Mulai dari lantai dasar (Index 0 = Level 1)
+    _pageController = PageController(initialPage: 0);
     _loadProgress();
   }
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -5510,6 +5513,26 @@ class _InfiniteTowerScreenState extends State<InfiniteTowerScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _highestLevel = prefs.getInt('infinite_tower_progress') ?? 0;
+    });
+
+    // Animasi sinematik merangkak naik ke lantai terakhir saat layar dibuka
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted && _pageController.hasClients) {
+          // 1 Halaman berisi 5 level.
+          int targetPage = _highestLevel ~/ 5;
+          if (targetPage > 19)
+            targetPage = 19; // Maksimal index 19 (Level 96-100)
+
+          if (targetPage > 0) {
+            _pageController.animateToPage(
+              targetPage,
+              duration: Duration(milliseconds: 1000 + (targetPage * 150)),
+              curve: Curves.easeInOutCubic,
+            );
+          }
+        }
+      });
     });
   }
 
@@ -5682,85 +5705,166 @@ class _InfiniteTowerScreenState extends State<InfiniteTowerScreen> {
             ),
           ),
 
-          // Tower Levels Grid
+          // Tower Levels (Step-based Scrolling / Vertical PageView)
           Expanded(
-            child: GridView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 5,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-                childAspectRatio: 1,
-              ),
-              itemCount: 100,
+            child: PageView.builder(
+              controller: _pageController,
+              scrollDirection: Axis.vertical,
+              // Set true agar Index 0 (Level 1) berada di bawah, dan kita mengusap ke atas
+              reverse: true,
+              itemCount: 20, // 100 level / 5 = 20 halaman
               itemBuilder: (context, index) {
-                final level = index + 1;
-                final isUnlocked = level <= _highestLevel + 1;
-                final isCompleted = level <= _highestLevel;
-
-                return GestureDetector(
-                  onTap: isUnlocked ? () => _startBattle(level) : null,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isCompleted
-                          ? Colors.green.shade200
-                          : isUnlocked
-                          ? Colors.blue.shade200
-                          : Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: isCompleted
-                            ? Colors.green.shade400
-                            : isUnlocked
-                            ? Colors.blue.shade400
-                            : Colors.grey.shade400,
-                        width: 2,
-                      ),
-                      boxShadow: isUnlocked
-                          ? [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ]
-                          : null,
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          '$level',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: isUnlocked ? Colors.black : Colors.grey,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${_calculateReward(level)}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isUnlocked ? Colors.black54 : Colors.grey,
-                          ),
-                        ),
-                        if (isCompleted)
-                          const Icon(
-                            Icons.check_circle,
-                            color: Colors.green,
-                            size: 16,
-                          ),
-                      ],
-                    ),
-                  ),
-                );
+                return _buildTowerPage(index);
               },
             ),
           ),
         ],
       ),
+    );
+  }
+
+  // --- BANTUAN RENDER TOWER ---
+
+  Widget _buildTowerPage(int pageIndex) {
+    // Tentukan aset gambar berdasarkan pageIndex (1 page = 5 level)
+    String imagePath =
+        'assets/images/tower_middle.png'; // Default untuk Level 6-95
+
+    if (pageIndex == 0) {
+      imagePath = 'assets/images/tower_bottom.png'; // Level 1-5
+    } else if (pageIndex == 19) {
+      imagePath = 'assets/images/tower_top.png'; // Level 96-100
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey.shade500, // Warna dasar dinding menara
+        border: const Border.symmetric(
+          // Pilar hitam tebal di pinggir agar terlihat seperti struktur bangunan
+          vertical: BorderSide(color: Colors.black87, width: 30),
+        ),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Latar Belakang Gambar Pagoda/Tower
+          Image.asset(
+            imagePath,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              // Fallback warna jika gambar belum dimasukkan ke folder assets
+              return Container(color: Colors.grey.shade800);
+            },
+          ),
+          // Tekstur bayangan batu bata placeholder
+          const Opacity(
+            opacity: 0.1,
+            child: Icon(Icons.grid_4x4, size: 500, color: Colors.black),
+          ),
+
+          // 5 Lantai per Halaman
+          Column(
+            children: List.generate(5, (floorIndex) {
+              // Hitung level (Dari atas ke bawah).
+              // Misal pageIndex 0.
+              // floorIndex 0 (Paling atas layar) -> Lv 5.
+              // floorIndex 4 (Paling bawah layar) -> Lv 1.
+              int level = (pageIndex * 5) + (5 - floorIndex);
+              return Expanded(child: _buildFloorItem(level));
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFloorItem(int level) {
+    final isUnlocked = level <= _highestLevel + 1;
+    final isCompleted = level <= _highestLevel;
+
+    // Keamanan jika level melebihi 100
+    if (level > 100) return const SizedBox.shrink();
+
+    return Stack(
+      alignment: Alignment.bottomCenter,
+      children: [
+        // Garis Pembatas Lantai (Floor base)
+        Container(
+          height: 16,
+          decoration: BoxDecoration(
+            color: Colors.grey.shade800,
+            border: const Border(
+              top: BorderSide(color: Colors.grey, width: 2),
+              bottom: BorderSide(color: Colors.black, width: 4),
+            ),
+          ),
+        ),
+
+        // Pintu Masuk / Tombol Level
+        Padding(
+          padding: const EdgeInsets.only(
+            bottom: 16.0,
+          ), // Berdiri tepat di atas garis lantai
+          child: GestureDetector(
+            onTap: isUnlocked ? () => _startBattle(level) : null,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              width: 100,
+              height: 110, // Ukuran disesuaikan agar 5 pintu muat di layar
+              decoration: BoxDecoration(
+                color: isCompleted
+                    ? Colors.green.shade800
+                    : isUnlocked
+                    ? Colors.blue.shade800
+                    : Colors.black87,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(50),
+                  topRight: Radius.circular(50),
+                ),
+                border: Border.all(
+                  color: isUnlocked ? Colors.amber : Colors.grey.shade700,
+                  width: isUnlocked ? 3 : 2,
+                ),
+                boxShadow: isUnlocked
+                    ? [
+                        BoxShadow(
+                          color: Colors.amber.withOpacity(0.5),
+                          blurRadius: 15,
+                          spreadRadius: 2,
+                        ),
+                      ]
+                    : [],
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Lv.$level',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: isUnlocked ? Colors.white : Colors.white54,
+                      shadows: const [
+                        Shadow(color: Colors.black, blurRadius: 2),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Icon(
+                    isCompleted
+                        ? Icons.check_circle
+                        : isUnlocked
+                        ? Icons.flash_on
+                        : Icons.lock,
+                    color: isUnlocked ? Colors.amber : Colors.white54,
+                    size: 28,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -5790,31 +5894,53 @@ class InfiniteTowerBattleArena extends StatefulWidget {
 class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
     with TickerProviderStateMixin {
   late Monster _activeMonster;
-  late Monster _trainerMonster;
+  late Monster _enemyMonster; // Disamakan sebutannya seperti arena lain
 
   Map<Monster, int> _partyHp = {};
   Map<Monster, int> _partyStamina = {};
 
-  late int _playerHp;
-  late int _trainerHp;
-  late int _oldPlayerHp;
-  late int _oldTrainerHp;
-  late int _playerStamina, _trainerStamina;
+  // Status HP & Stamina
+  late int _playerHp, _enemyHp;
+  late int _oldPlayerHp, _oldEnemyHp; // Untuk animasi bar HP
+  late int _playerStamina, _enemyStamina;
 
+  // Sistem Kartu (Deck)
   List<MonsterMove> _currentCards = [];
   bool _isPlayerTurn = true;
+  bool _isSwitchMode = false;
   String _battleLog = "";
 
+  // Animasi
   late AnimationController _cardAnimationController;
   late Animation<double> _cardAnimation;
   late AnimationController _clashController;
   late AnimationController _playerShakeController;
-  late AnimationController _trainerShakeController;
+  late AnimationController _enemyShakeController;
 
   int _playerDamageValue = 0;
-  int _trainerDamageValue = 0;
+  int _enemyDamageValue = 0;
 
+  // Efek Spesial
+  int _enemyBurnTurns = 0;
+  int _enemyBindTurns = 0;
+  int _playerBurnTurns = 0;
+  int _playerBindTurns = 0;
+  int _playerInvulnerableTurns = 0;
+  int _enemyInvulnerableTurns = 0;
+  int _playerParalysisTurns = 0;
+  int _enemyParalysisTurns = 0;
+
+  // Cooldown
   int _turnCount = 1;
+  int _lastSpecialCardTurn = -14;
+  int _enemyLastSpecialTurn = -14;
+  int _playerConsecutiveAbsorb = 0;
+  int _enemyConsecutiveAbsorb = 0;
+
+  void _syncPartyStats() {
+    _partyHp[_activeMonster] = _playerHp;
+    _partyStamina[_activeMonster] = _playerStamina;
+  }
 
   @override
   void initState() {
@@ -5825,13 +5951,13 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
       _partyStamina[m] = m.stamina;
     }
 
-    _trainerMonster = widget.trainerMonster;
+    _enemyMonster = widget.trainerMonster;
     _playerHp = _partyHp[_activeMonster]!;
-    _trainerHp = _trainerMonster.hp;
+    _enemyHp = _enemyMonster.hp;
     _oldPlayerHp = _playerHp;
-    _oldTrainerHp = _trainerHp;
+    _oldEnemyHp = _enemyHp;
     _playerStamina = _partyStamina[_activeMonster]!;
-    _trainerStamina = _trainerMonster.stamina;
+    _enemyStamina = _enemyMonster.stamina;
     _battleLog = "Pertarungan Tower Level ${widget.towerLevel} dimulai!";
 
     _cardAnimationController = AnimationController(
@@ -5846,7 +5972,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
-    _trainerShakeController = AnimationController(
+    _enemyShakeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
@@ -5864,13 +5990,61 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
     _cardAnimationController.dispose();
     _clashController.dispose();
     _playerShakeController.dispose();
-    _trainerShakeController.dispose();
+    _enemyShakeController.dispose();
     super.dispose();
   }
 
-  void _syncPartyStats() {
-    _partyHp[_activeMonster] = _playerHp;
-    _partyStamina[_activeMonster] = _playerStamina;
+  IconData _getElementIcon(MonsterElement element) {
+    switch (element) {
+      case MonsterElement.Api:
+        return Icons.local_fire_department;
+      case MonsterElement.Air:
+        return Icons.water_drop;
+      case MonsterElement.Tumbuhan:
+        return Icons.eco;
+      case MonsterElement.Listrik:
+        return Icons.bolt;
+      case MonsterElement.Tanah:
+        return Icons.terrain;
+      case MonsterElement.Terbang:
+        return Icons.flutter_dash;
+    }
+  }
+
+  bool _isSuperEffective(MonsterElement attacker, MonsterElement defender) {
+    return (attacker == MonsterElement.Api &&
+            defender == MonsterElement.Tumbuhan) ||
+        (attacker == MonsterElement.Tumbuhan &&
+            (defender == MonsterElement.Air ||
+                defender == MonsterElement.Tanah)) ||
+        (attacker == MonsterElement.Air && defender == MonsterElement.Api) ||
+        (attacker == MonsterElement.Listrik &&
+            (defender == MonsterElement.Air ||
+                defender == MonsterElement.Terbang)) ||
+        (attacker == MonsterElement.Tanah &&
+            (defender == MonsterElement.Api ||
+                defender == MonsterElement.Listrik)) ||
+        (attacker == MonsterElement.Terbang &&
+            defender == MonsterElement.Tumbuhan);
+  }
+
+  bool _isNotVeryEffective(MonsterElement attacker, MonsterElement defender) {
+    return (attacker == MonsterElement.Api && defender == MonsterElement.Air) ||
+        (attacker == MonsterElement.Tumbuhan &&
+            defender == MonsterElement.Api) ||
+        (attacker == MonsterElement.Air &&
+            defender == MonsterElement.Tumbuhan) ||
+        (attacker == MonsterElement.Tanah &&
+            defender == MonsterElement.Tumbuhan) ||
+        (attacker == MonsterElement.Terbang &&
+            defender == MonsterElement.Listrik);
+  }
+
+  bool _isNoEffect(MonsterElement attacker, MonsterElement defender) {
+    return (attacker == MonsterElement.Tanah &&
+            defender == MonsterElement.Terbang) ||
+        (attacker == MonsterElement.Listrik &&
+            defender == MonsterElement.Tanah);
   }
 
   void _drawCards() {
@@ -5889,391 +6063,1636 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
         .where((m) => m.type == MoveType.recover)
         .toList();
 
-    List<MonsterMove> availableMoves = [];
-    if (normalMoves.isNotEmpty) availableMoves.addAll(normalMoves);
-    if (elementalMoves.isNotEmpty) availableMoves.addAll(elementalMoves);
-    if (recoverMoves.isNotEmpty) availableMoves.addAll(recoverMoves);
-    if (specialMoves.isNotEmpty) availableMoves.addAll(specialMoves);
-
-    availableMoves.shuffle();
-
-    for (int i = 0; i < 3 && availableMoves.isNotEmpty; i++) {
-      _currentCards.add(availableMoves.removeAt(0));
-    }
-  }
-
-  void _executeMove(MonsterMove move) {
-    if (!_isPlayerTurn) return;
-
-    setState(() {
-      _isPlayerTurn = false;
-      _battleLog = "${_activeMonster.name} menggunakan ${move.name}!";
-    });
-
-    // Calculate damage
-    final damageResult = _calculateDamage(
-      _activeMonster,
-      _trainerMonster,
-      move,
-    );
-    final damage = damageResult['damage'] as int;
-    final log = damageResult['log'] as String;
-
-    setState(() {
-      _trainerHp -= damage;
-      _playerDamageValue = damage;
-      _battleLog += log;
-    });
-
-    // Animate damage
-    _trainerShakeController.forward(from: 0.0);
-
-    // Check if trainer defeated
-    if (_trainerHp <= 0) {
-      setState(() {
-        _trainerHp = 0;
-        _battleLog = "Kamu menang! Trainer Lv.${widget.towerLevel} dikalahkan!";
-      });
-      Future.delayed(const Duration(seconds: 2), () {
-        widget.onBattleEnd(true);
-        Navigator.of(context).pop();
-      });
-      return;
+    if (specialMoves.isNotEmpty && (_turnCount - _lastSpecialCardTurn) >= 15) {
+      _currentCards.add(specialMoves[random.nextInt(specialMoves.length)]);
+      _lastSpecialCardTurn = _turnCount;
     }
 
-    // Trainer turn after delay
-    Future.delayed(const Duration(seconds: 1), () {
-      _trainerTurn();
-    });
-  }
+    List<MonsterMove> fillPool = [];
+    if (normalMoves.isNotEmpty) fillPool.addAll(normalMoves);
+    if (elementalMoves.isNotEmpty) fillPool.addAll(elementalMoves);
+    if (recoverMoves.isNotEmpty) fillPool.addAll(recoverMoves);
+    fillPool.shuffle();
 
-  void _trainerTurn() {
-    final random = Random();
-    final availableMoves = _trainerMonster.moves
-        .where((m) => _trainerStamina >= m.cost.abs())
-        .toList();
-
-    if (availableMoves.isEmpty) {
-      // Trainer can't move
-      setState(() {
-        _battleLog = "Trainer kehabisan stamina!";
-        _isPlayerTurn = true;
-        _turnCount++;
-        _drawCards();
-      });
-      return;
+    while (_currentCards.length < 3 && moves.isNotEmpty) {
+      var availableMoves = moves
+          .where((m) => !_currentCards.contains(m))
+          .toList();
+      if (availableMoves.isEmpty) break;
+      _currentCards.add(availableMoves[random.nextInt(availableMoves.length)]);
     }
 
-    final move = availableMoves[random.nextInt(availableMoves.length)];
-
-    setState(() {
-      _trainerStamina +=
-          move.cost; // Cost is negative, so this decreases stamina
-      _battleLog = "Trainer menggunakan ${move.name}!";
-    });
-
-    final damageResult = _calculateDamage(
-      _trainerMonster,
-      _activeMonster,
-      move,
-    );
-    final damage = damageResult['damage'] as int;
-    final log = damageResult['log'] as String;
-
-    setState(() {
-      _playerHp -= damage;
-      _trainerDamageValue = damage;
-      _battleLog += log;
-    });
-
-    _playerShakeController.forward(from: 0.0);
-
-    if (_playerHp <= 0) {
-      setState(() {
-        _playerHp = 0;
-        _battleLog = "Kamu kalah! Coba lagi di level berikutnya.";
-      });
-      Future.delayed(const Duration(seconds: 2), () {
-        widget.onBattleEnd(false);
-        Navigator.of(context).pop();
-      });
-      return;
-    }
-
-    setState(() {
-      _isPlayerTurn = true;
-      _turnCount++;
-      _drawCards();
-    });
+    _currentCards.shuffle();
   }
 
   Map<String, dynamic> _calculateDamage(
     Monster attacker,
     Monster defender,
-    MonsterMove move,
-  ) {
+    MonsterMove move, {
+    int defenderBindTurns = 0,
+    int defenderBurnTurns = 0,
+    int defenderInvulnerableTurns = 0,
+  }) {
+    if (defenderInvulnerableTurns > 0 && move.type != MoveType.recover) {
+      return {'damage': 0, 'log': ' Serangan meleset (Invulnerable)!'};
+    }
+
     final random = Random();
 
-    // Elemental effectiveness
+    if (defender.element == MonsterElement.Terbang &&
+        random.nextInt(100) < 10 &&
+        move.type != MoveType.recover) {
+      return {'damage': 0, 'log': ' Serangan berhasil dihindari (Evasiness)!'};
+    }
+
+    MonsterElement? moveElement;
+    if (move.type == MoveType.elemental || move.type == MoveType.special) {
+      moveElement = attacker.element;
+    }
+
+    if (moveElement != null && _isNoEffect(moveElement, defender.element)) {
+      return {'damage': 0, 'log': ' Tidak ada efek pada tipe ini!'};
+    }
+
     double typeModifier = 1.0;
     String typeLog = "";
-
-    if (move.type == MoveType.elemental || move.type == MoveType.special) {
-      if (_isSuperEffective(attacker.element, defender.element)) {
+    if (moveElement != null) {
+      if (_isSuperEffective(moveElement, defender.element)) {
         typeModifier = 2.0;
         typeLog = " Super Efektif!";
-      } else if (_isNotVeryEffective(attacker.element, defender.element)) {
-        typeModifier = 0.5;
+      } else if (_isNotVeryEffective(moveElement, defender.element)) {
+        typeModifier = 1.25;
         typeLog = " Kurang Efektif...";
+      } else if (moveElement == defender.element) {
+        typeModifier = 1.5;
+        typeLog = " Efektif.";
       }
     }
 
-    // Critical hit
-    final isCritical = random.nextInt(100) < 10;
-    final critModifier = isCritical ? 1.5 : 1.0;
-    final critLog = isCritical ? " Serangan Kritis!" : "";
+    double stabModifier = 1.0;
+    if (moveElement != null && moveElement == attacker.element) {
+      stabModifier = 1.5;
+    }
 
-    // Random modifier
-    final randomModifier = 0.85 + random.nextDouble() * 0.15;
+    double critModifier = 1.0;
+    bool isCritical = random.nextInt(100) < 10;
+    if (isCritical) {
+      critModifier = 1.5;
+    }
 
-    // Base damage calculation
-    final baseDamage =
-        ((2 * attacker.level / 5 + 2) *
+    double randomModifier = 0.85 + random.nextDouble() * 0.15;
+
+    double effectiveDefense = defender.defense;
+    if (defenderBindTurns > 0) {
+      effectiveDefense *= 0.9;
+    }
+
+    double baseDamage =
+        (((2 * attacker.level / 5 + 2) *
                 move.power *
-                (attacker.attack / defender.defense) /
-                50)
-            .floor();
-    final finalDamage =
-        (baseDamage * typeModifier * critModifier * randomModifier).floor();
+                (attacker.attack / effectiveDefense)) /
+            40) +
+        2;
 
-    return {'damage': finalDamage, 'log': typeLog + critLog};
+    double finalDamageDouble =
+        baseDamage *
+        typeModifier *
+        stabModifier *
+        critModifier *
+        randomModifier;
+
+    if (defenderBurnTurns > 0 && move.type == MoveType.elemental) {
+      finalDamageDouble *= 1.1;
+      typeLog += " (+10% DMG Burn!)";
+      if (moveElement == MonsterElement.Api) {
+        finalDamageDouble += 2;
+        typeLog += " (+2 DMG Api)";
+      }
+    }
+
+    String critLog = isCritical ? " Serangan Kritis!" : "";
+
+    return {'damage': finalDamageDouble.floor(), 'log': typeLog + critLog};
   }
 
-  bool _isSuperEffective(MonsterElement attacker, MonsterElement defender) {
-    return (attacker == MonsterElement.Api &&
-            defender == MonsterElement.Tumbuhan) ||
-        (attacker == MonsterElement.Tumbuhan &&
-            defender == MonsterElement.Air) ||
-        (attacker == MonsterElement.Air && defender == MonsterElement.Api) ||
-        (attacker == MonsterElement.Listrik &&
-            (defender == MonsterElement.Air ||
-                defender == MonsterElement.Terbang)) ||
-        (attacker == MonsterElement.Tanah &&
-            (defender == MonsterElement.Api ||
-                defender == MonsterElement.Listrik)) ||
-        (attacker == MonsterElement.Terbang &&
-            defender == MonsterElement.Tumbuhan);
+  void _checkPlayerFaint() {
+    bool hasAliveMonster = widget.playerParty.any((m) => _partyHp[m]! > 0);
+    if (hasAliveMonster) {
+      setState(() {
+        _battleLog =
+            "${_activeMonster.name} kehabisan tenaga! Pilih monster pengganti.";
+        _isSwitchMode = true;
+        _isPlayerTurn = true;
+      });
+    } else {
+      _showEndGameDialog(false);
+    }
   }
 
-  bool _isNotVeryEffective(MonsterElement attacker, MonsterElement defender) {
-    return (attacker == MonsterElement.Api && defender == MonsterElement.Air) ||
-        (attacker == MonsterElement.Tumbuhan &&
-            defender == MonsterElement.Api) ||
-        (attacker == MonsterElement.Air &&
-            defender == MonsterElement.Tumbuhan) ||
-        (attacker == MonsterElement.Listrik &&
-            defender == MonsterElement.Tanah) ||
-        (attacker == MonsterElement.Tanah &&
-            defender == MonsterElement.Tumbuhan) ||
-        (attacker == MonsterElement.Terbang &&
-            defender == MonsterElement.Listrik);
+  void _switchMonster(Monster newMonster) {
+    if (!_isPlayerTurn) return;
+    if (newMonster == _activeMonster) return;
+    if (_partyHp[newMonster]! <= 0) return;
+
+    bool isFaintSwitch = _playerHp <= 0;
+
+    setState(() {
+      _syncPartyStats();
+
+      _activeMonster = newMonster;
+      _playerHp = _partyHp[_activeMonster]!;
+      _oldPlayerHp = _playerHp;
+      _playerStamina = _partyStamina[_activeMonster]!;
+      _oldEnemyHp = _enemyHp;
+
+      _isSwitchMode = false;
+      _battleLog = "Kamu mengeluarkan ${_activeMonster.name}!";
+
+      _drawCards();
+    });
+
+    if (isFaintSwitch) {
+      setState(() {
+        _turnCount++;
+      });
+      _cardAnimationController.forward(from: 0.0);
+    } else {
+      setState(() {
+        _isPlayerTurn = false;
+      });
+      _enemyTurn(); // Switch manual menghanguskan 1 giliran
+    }
+  }
+
+  void _playTurn(MonsterMove move) {
+    if (!_isPlayerTurn) return;
+
+    if (_playerInvulnerableTurns > 0) {
+      _playerInvulnerableTurns--;
+    }
+
+    if (_playerBindTurns > 0 || _playerParalysisTurns > 0) {
+      setState(() {
+        if (_playerBindTurns > 0) {
+          _playerBindTurns--;
+          _battleLog = "Kamu tak bisa gerak karena Terikat!";
+        } else {
+          _playerParalysisTurns--;
+          _battleLog = "Kamu tak bisa gerak karena Paralysis!";
+        }
+        _isPlayerTurn = false;
+      });
+      _enemyTurn();
+      return;
+    }
+
+    String statusLog = "";
+    if (_playerBurnTurns > 0) {
+      setState(() {
+        _oldPlayerHp = _playerHp;
+        _playerHp = max(0, _playerHp - 5);
+        _syncPartyStats();
+        _playerBurnTurns--;
+        statusLog = "Kamu terkena 5 damage Burn! ";
+      });
+      if (_playerHp == 0) {
+        _checkPlayerFaint();
+        return;
+      }
+    }
+
+    if (move.name == 'Absorb' || move.effect == 'Drain HP & Heal') {
+      _playerConsecutiveAbsorb++;
+    } else {
+      _playerConsecutiveAbsorb = 0;
+    }
+
+    if (move.cost > _playerStamina) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Stamina tidak cukup!'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (move.type == MoveType.recover) {
+      setState(() {
+        _playerStamina = min(
+          _activeMonster.stamina,
+          _playerStamina - move.cost,
+        );
+        _syncPartyStats();
+        _battleLog = "Fokus & pulihkan ${-move.cost} SP!";
+        _isPlayerTurn = false;
+      });
+      _enemyTurn();
+      return;
+    }
+
+    setState(() {
+      _isPlayerTurn = false;
+      _playerStamina = min(_activeMonster.stamina, _playerStamina - move.cost);
+      _syncPartyStats();
+
+      final damageResult = _calculateDamage(
+        _activeMonster,
+        _enemyMonster,
+        move,
+        defenderBindTurns: _enemyBindTurns,
+        defenderBurnTurns: _enemyBurnTurns,
+        defenderInvulnerableTurns: _enemyInvulnerableTurns,
+      );
+      int damage = damageResult['damage'];
+      String elementalLog = damageResult['log'];
+
+      String effectLog = "";
+      if (move.name == 'Flame Spin' || move.effect == 'Burn 3 turn') {
+        _enemyBurnTurns = 3;
+        effectLog = " Musuh Burn!";
+      } else if (move.name == 'Bind' || move.effect == 'Bind 1 turn') {
+        _enemyBindTurns = 1;
+        effectLog = " Musuh Terikat!";
+      } else if (move.name == 'Paralysis' ||
+          move.effect == 'Paralysis 1 turn') {
+        _enemyParalysisTurns = 1;
+        effectLog = " Musuh Paralysis!";
+      } else if (move.name == 'Grounding' || move.effect == 'Miss 2 turn') {
+        _playerInvulnerableTurns = 2;
+        effectLog = " Sembunyi 2 Turn!";
+      } else if (move.name == 'Fly Away' || move.effect == 'Miss 1 turn') {
+        _playerInvulnerableTurns = 1;
+        effectLog = " Terbang 1 Turn!";
+      } else if (move.name == 'Absorb' || move.effect == 'Drain HP & Heal') {
+        int combo = min(_playerConsecutiveAbsorb, 3);
+        int bonus = (combo - 1) * 2;
+        damage += bonus;
+        int healAmount = damage;
+        _playerHp = min(_activeMonster.hp, _playerHp + healAmount);
+        _syncPartyStats();
+        effectLog = " Serap $healAmount HP!";
+      }
+      if (move.cost < 0 && move.type != MoveType.recover) {
+        effectLog += " Pulih ${-move.cost} SP!";
+      }
+
+      _enemyDamageValue = damage;
+      _oldEnemyHp = _enemyHp;
+      _enemyHp = max(0, _enemyHp - damage);
+      if (damage > 0) _enemyShakeController.forward(from: 0.0);
+
+      _battleLog =
+          statusLog +
+          "${_activeMonster.name} pakai ${move.name}!$elementalLog$effectLog";
+    });
+
+    if (_enemyHp == 0) {
+      _showEndGameDialog(true);
+      return;
+    }
+    _enemyTurn();
+  }
+
+  void _enemyTurn() {
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (!mounted) return;
+      setState(() {
+        String statusLog = "";
+        if (_enemyInvulnerableTurns > 0) _enemyInvulnerableTurns--;
+
+        if (_enemyBurnTurns > 0) {
+          _enemyHp = max(0, _enemyHp - 5);
+          _enemyBurnTurns--;
+          statusLog = "Trainer kena 5 DMG Burn! ";
+        }
+        if (_enemyHp == 0) {
+          _battleLog = statusLog + "Trainer kehabisan HP!";
+          _showEndGameDialog(true);
+          return;
+        }
+        if (_enemyBindTurns > 0 || _enemyParalysisTurns > 0) {
+          if (_enemyBindTurns > 0) {
+            _enemyBindTurns--;
+            _battleLog = statusLog + "Trainer Terikat!";
+          } else {
+            _enemyParalysisTurns--;
+            _battleLog = statusLog + "Trainer Paralysis!";
+          }
+          _nextPlayerTurn();
+          return;
+        }
+
+        MonsterMove? chosenMove;
+        final random = Random();
+        var affordableMoves = _enemyMonster.moves
+            .where((m) => m.cost <= _enemyStamina)
+            .toList();
+
+        if ((_turnCount - _enemyLastSpecialTurn) < 15) {
+          affordableMoves.removeWhere((m) => m.type == MoveType.special);
+        }
+
+        if (affordableMoves.isNotEmpty) {
+          Map<MonsterMove, double> moveScores = {};
+          bool isPlayerWeak = _isSuperEffective(
+            _enemyMonster.element,
+            _activeMonster.element,
+          );
+
+          for (var move in affordableMoves) {
+            double score = 0;
+            switch (move.type) {
+              case MoveType.elemental:
+                score = isPlayerWeak ? 3.0 : 1.0;
+                break;
+              case MoveType.special:
+                score = 1.0;
+                break;
+              case MoveType.normal:
+                score = 0.5;
+                break;
+              case MoveType.recover:
+                if (_enemyStamina < _enemyMonster.stamina * 0.4)
+                  score = 2.5;
+                else
+                  score = -1.0;
+                break;
+            }
+            moveScores[move] = score + (random.nextDouble() * 0.5);
+          }
+
+          if (moveScores.isNotEmpty) {
+            final bestMoveEntry = moveScores.entries.reduce(
+              (a, b) => a.value > b.value ? a : b,
+            );
+            chosenMove = bestMoveEntry.key;
+          }
+        }
+
+        if (chosenMove != null) {
+          if (chosenMove.type == MoveType.special)
+            _enemyLastSpecialTurn = _turnCount;
+          if (chosenMove.name == 'Absorb' ||
+              chosenMove.effect == 'Drain HP & Heal')
+            _enemyConsecutiveAbsorb++;
+          else
+            _enemyConsecutiveAbsorb = 0;
+
+          _enemyStamina = min(
+            _enemyMonster.stamina,
+            _enemyStamina - chosenMove.cost,
+          );
+
+          if (chosenMove.type == MoveType.recover) {
+            _battleLog = statusLog + "Trainer pulihkan ${-chosenMove.cost} SP!";
+          } else {
+            final damageResult = _calculateDamage(
+              _enemyMonster,
+              _activeMonster,
+              chosenMove,
+              defenderBindTurns: _playerBindTurns,
+              defenderBurnTurns: _playerBurnTurns,
+              defenderInvulnerableTurns: _playerInvulnerableTurns,
+            );
+            int enemyDamage = damageResult['damage'];
+            String elementalLog = damageResult['log'];
+
+            String effectLog = "";
+            if (chosenMove.name == 'Flame Spin' ||
+                chosenMove.effect == 'Burn 3 turn') {
+              _playerBurnTurns = 3;
+              effectLog = " Kamu Burn!";
+            } else if (chosenMove.name == 'Bind' ||
+                chosenMove.effect == 'Bind 1 turn') {
+              _playerBindTurns = 1;
+              effectLog = " Kamu Terikat!";
+            } else if (chosenMove.name == 'Paralysis' ||
+                chosenMove.effect == 'Paralysis 1 turn') {
+              _playerParalysisTurns = 1;
+              effectLog = " Kamu Paralysis!";
+            } else if (chosenMove.name == 'Grounding' ||
+                chosenMove.effect == 'Miss 2 turn') {
+              _enemyInvulnerableTurns = 2;
+              effectLog = " Musuh Sembunyi!";
+            } else if (chosenMove.name == 'Fly Away' ||
+                chosenMove.effect == 'Miss 1 turn') {
+              _enemyInvulnerableTurns = 1;
+              effectLog = " Musuh Terbang!";
+            } else if (chosenMove.name == 'Absorb' ||
+                chosenMove.effect == 'Drain HP & Heal') {
+              int combo = min(_enemyConsecutiveAbsorb, 3);
+              int bonus = (combo - 1) * 2;
+              enemyDamage += bonus;
+              int healAmount = enemyDamage;
+              _oldEnemyHp = _enemyHp;
+              _enemyHp = min(_enemyMonster.hp, _enemyHp + healAmount);
+              effectLog = " Musuh serap $healAmount HP!";
+            }
+            if (chosenMove.cost < 0 && chosenMove.type != MoveType.recover) {
+              effectLog += " Musuh pulih ${-chosenMove.cost} SP!";
+            }
+
+            _playerDamageValue = enemyDamage;
+            _oldPlayerHp = _playerHp;
+            _playerHp = max(0, _playerHp - enemyDamage);
+            _syncPartyStats();
+            if (enemyDamage > 0) _playerShakeController.forward(from: 0.0);
+
+            _battleLog =
+                statusLog +
+                "Trainer pakai ${chosenMove.name}!$elementalLog$effectLog";
+          }
+        } else {
+          _enemyStamina = min(_enemyMonster.stamina, _enemyStamina + 2);
+          _battleLog = statusLog + "Trainer istirahat!";
+        }
+      });
+
+      if (_playerHp == 0)
+        _checkPlayerFaint();
+      else
+        _nextPlayerTurn();
+    });
+  }
+
+  void _nextPlayerTurn() {
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (!mounted) return;
+      setState(() {
+        _turnCount++;
+        _isPlayerTurn = true;
+        _battleLog = "Giliran kamu! Pilih kartu serangan.";
+        _drawCards();
+        _cardAnimationController.forward(from: 0.0);
+      });
+    });
+  }
+
+  void _showEndGameDialog(bool won) {
+    widget.onBattleEnd(won);
+
+    int exp = won ? 30 + widget.towerLevel * 2 : 5;
+    List<Map<String, num>> allLevelUps = [];
+    int initialLevel = _activeMonster.level;
+
+    if (won) {
+      _activeMonster.currentExp += exp;
+      while (_activeMonster.currentExp >= _activeMonster.expToNextLevel) {
+        int remainingExp =
+            _activeMonster.currentExp - _activeMonster.expToNextLevel;
+        allLevelUps.add(_activeMonster.levelUp());
+        _activeMonster.currentExp = remainingExp;
+        _activeMonster.expToNextLevel = Monster.calculateExpForNextLevel(
+          _activeMonster.level,
+        );
+      }
+    }
+
+    SaveManager.saveParty(widget.playerParty);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(won ? 'Menang!' : 'Kalah...', textAlign: TextAlign.center),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(
+              won ? Icons.emoji_events : Icons.sentiment_very_dissatisfied,
+              size: 60,
+              color: won ? Colors.amber : Colors.grey,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              won
+                  ? 'Kamu berhasil mengalahkan Trainer Lv.${widget.towerLevel}!'
+                  : 'Monster kamu kehabisan tenaga.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '+ $exp EXP',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        actions: [
+          Center(
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context); // Tutup dialog hasil battle
+                if (allLevelUps.isNotEmpty) {
+                  _showLevelUpDialog(
+                    allLevelUps,
+                    _activeMonster,
+                    initialLevel,
+                  ).then((_) {
+                    Navigator.pop(context); // Kembali ke menu Infinite Tower
+                  });
+                } else {
+                  Navigator.pop(context); // Langsung kembali
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: won ? Colors.green : Colors.grey,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Kembali',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showLevelUpDialog(
+    List<Map<String, num>> allLevelUps,
+    Monster monster,
+    int initialLevel,
+  ) {
+    Map<String, num> totalIncreases = {};
+    for (var increases in allLevelUps) {
+      increases.forEach((key, value) {
+        totalIncreases[key] = (totalIncreases[key] ?? 0) + value;
+      });
+    }
+
+    double oldAttack = monster.attack - (totalIncreases['Attack'] ?? 0);
+    double oldDefense = monster.defense - (totalIncreases['Defense'] ?? 0.0);
+    int oldHp = monster.hp - (totalIncreases['HP'] ?? 0).toInt();
+    int oldSpeed = monster.speed - (totalIncreases['Speed'] ?? 0).toInt();
+    int oldStamina = monster.stamina - (totalIncreases['Stamina'] ?? 0).toInt();
+
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          '✨ ${monster.name} Naik Level! ✨',
+          textAlign: TextAlign.center,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(
+                  begin: initialLevel.toDouble(),
+                  end: monster.level.toDouble(),
+                ),
+                duration: const Duration(milliseconds: 800),
+                builder: (context, value, child) {
+                  return Text(
+                    'Level ${value.toInt()}',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  );
+                },
+              ),
+            ),
+            const Divider(height: 24),
+            _buildStatIncreaseRow(
+              'HP',
+              oldHp,
+              monster.hp,
+              totalIncreases['HP']!,
+            ),
+            _buildStatIncreaseRow(
+              'Attack',
+              oldAttack,
+              monster.attack,
+              totalIncreases['Attack']!,
+            ),
+            _buildStatIncreaseRow(
+              'Defense',
+              oldDefense,
+              monster.defense,
+              totalIncreases['Defense']!,
+            ),
+            _buildStatIncreaseRow(
+              'Speed',
+              oldSpeed,
+              monster.speed,
+              totalIncreases['Speed']!,
+            ),
+            _buildStatIncreaseRow(
+              'Stamina',
+              oldStamina,
+              monster.stamina,
+              totalIncreases['Stamina']!,
+            ),
+          ],
+        ),
+        actions: [
+          Center(
+            child: ElevatedButton(
+              onPressed: () {
+                Future.delayed(const Duration(milliseconds: 1500), () {
+                  if (mounted) Navigator.pop(context);
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Hebat!',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatIncreaseRow(
+    String label,
+    num oldValue,
+    num newValue,
+    num increase,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('$label:', style: const TextStyle(fontWeight: FontWeight.w600)),
+          SizedBox(
+            width: 120,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(
+                begin: oldValue.toDouble(),
+                end: newValue.toDouble(),
+              ),
+              duration: const Duration(milliseconds: 1200),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, child) {
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      value.toInt().toString(),
+                      style: const TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    AnimatedOpacity(
+                      opacity: value < newValue.toDouble() ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 300),
+                      child: Text(
+                        '(+${increase.toInt()})',
+                        style: const TextStyle(
+                          color: Colors.green,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Tower Level ${widget.towerLevel}'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: Colors.black87,
-      ),
-      body: Column(
-        children: [
-          // Battle Info
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.orange.shade50,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Level ${widget.towerLevel}',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text('Turn: $_turnCount', style: const TextStyle(fontSize: 16)),
-              ],
-            ),
-          ),
+      backgroundColor: const Color(0xFFE0F7FA),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ARENA PERTARUNGAN (Split Screen Style)
+            Expanded(
+              flex: 5,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // Animasi Clash
+                  Positioned.fill(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final boxSize = Size(
+                          constraints.maxWidth,
+                          constraints.maxHeight,
+                        );
+                        return AnimatedBuilder(
+                          animation: _clashController,
+                          builder: (context, child) {
+                            final linearValue = _clashController.value;
+                            final slideProgress = Curves.easeOut.transform(
+                              (linearValue / 0.35).clamp(0.0, 1.0),
+                            );
+                            final lineProgress = Curves.easeOut.transform(
+                              ((linearValue - 0.35) / 0.15).clamp(0.0, 1.0),
+                            );
+                            final morphProgress = Curves.easeOutBack.transform(
+                              ((linearValue - 0.50) / 0.50).clamp(0.0, 1.0),
+                            );
 
-          // Battle Area
-          Expanded(
-            child: Stack(
-              children: [
-                // Background
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.blue.shade100, Colors.blue.shade50],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
+                            final dy = boxSize.height * morphProgress;
+                            final dx = boxSize.width;
+                            final lineAngle = atan2(dy, dx);
+                            final lineWidth = sqrt(dx * dx + dy * dy) * 2.5;
+
+                            final slideYTop =
+                                -(boxSize.height / 2) * (1 - slideProgress);
+                            final slideYBottom =
+                                (boxSize.height / 2) * (1 - slideProgress);
+
+                            return Stack(
+                              fit: StackFit.expand,
+                              clipBehavior: Clip.none,
+                              children: [
+                                Transform.translate(
+                                  offset: Offset(0, slideYTop),
+                                  child: ClipPath(
+                                    clipper: DynamicTopClipper(morphProgress),
+                                    child: Container(
+                                      color: _enemyMonster.elementColor,
+                                      child: Stack(
+                                        children: [
+                                          Positioned(
+                                            top: -40,
+                                            right: -40,
+                                            child: Icon(
+                                              _getElementIcon(
+                                                _enemyMonster.element,
+                                              ),
+                                              size: 250,
+                                              color: Colors.white.withOpacity(
+                                                0.1,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Transform.translate(
+                                  offset: Offset(0, slideYBottom),
+                                  child: ClipPath(
+                                    clipper: DynamicBottomClipper(
+                                      morphProgress,
+                                    ),
+                                    child: Container(
+                                      color: _activeMonster.elementColor,
+                                      child: Stack(
+                                        children: [
+                                          Positioned(
+                                            bottom: -40,
+                                            left: -40,
+                                            child: Icon(
+                                              _getElementIcon(
+                                                _activeMonster.element,
+                                              ),
+                                              size: 250,
+                                              color: Colors.white.withOpacity(
+                                                0.1,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                if (lineProgress > 0)
+                                  Center(
+                                    child: OverflowBox(
+                                      maxWidth: double.infinity,
+                                      maxHeight: double.infinity,
+                                      child: Transform.rotate(
+                                        angle: lineAngle,
+                                        child: Container(
+                                          height: 4,
+                                          width: lineWidth * lineProgress,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.white.withOpacity(
+                                                  0.8,
+                                                ),
+                                                blurRadius: 15,
+                                                spreadRadius: 2,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            );
+                          },
+                        );
+                      },
                     ),
                   ),
-                ),
 
-                // Trainer Monster (Top)
-                Positioned(
-                  top: 50,
-                  right: 50,
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade200,
-                          borderRadius: BorderRadius.circular(60),
-                          border: Border.all(
-                            color: Colors.red.shade400,
-                            width: 3,
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.person,
-                          size: 60,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _trainerMonster.name,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      Text('HP: $_trainerHp/${_trainerMonster.hp}'),
-                      if (_trainerDamageValue > 0)
-                        Text(
-                          '-$_trainerDamageValue',
-                          style: const TextStyle(
-                            color: Colors.red,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-
-                // Player Monster (Bottom)
-                Positioned(
-                  bottom: 50,
-                  left: 50,
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade200,
-                          borderRadius: BorderRadius.circular(60),
-                          border: Border.all(
-                            color: Colors.blue.shade400,
-                            width: 3,
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.pets,
-                          size: 60,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _activeMonster.name,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      Text('HP: $_playerHp/${_activeMonster.hp}'),
-                      if (_playerDamageValue > 0)
-                        Text(
-                          '-$_playerDamageValue',
-                          style: const TextStyle(
-                            color: Colors.red,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Battle Log
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.grey.shade100,
-            child: Text(
-              _battleLog,
-              style: const TextStyle(fontSize: 16),
-              textAlign: TextAlign.center,
-            ),
-          ),
-
-          // Action Cards
-          if (_isPlayerTurn)
-            Container(
-              height: 120,
-              padding: const EdgeInsets.all(8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: _currentCards.map((move) {
-                  return GestureDetector(
-                    onTap: () => _executeMove(move),
-                    child: Container(
-                      width: 100,
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
+                  Positioned(
+                    top: 16,
+                    left: 16,
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.arrow_back_ios_new,
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey.shade300),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
                       ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            move.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          Text(
-                            'PWR: ${move.power}',
-                            style: const TextStyle(fontSize: 10),
-                          ),
-                          Text(
-                            'Cost: ${move.cost}',
-                            style: const TextStyle(fontSize: 10),
-                          ),
-                        ],
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ),
+
+                  // Animasi Damage Musuh
+                  if (_enemyDamageValue > 0)
+                    Positioned(
+                      top: size.height * 0.3,
+                      right: size.width * 0.2,
+                      child: _buildDamageText(_enemyDamageValue, isEnemy: true),
+                    ),
+
+                  // Animasi Damage Pemain
+                  if (_playerDamageValue > 0)
+                    Positioned(
+                      bottom: size.height * 0.3,
+                      left: size.width * 0.2,
+                      child: _buildDamageText(
+                        _playerDamageValue,
+                        isEnemy: false,
                       ),
                     ),
-                  );
-                }).toList(),
+
+                  // MUSUH
+                  _buildArenaSide(
+                    isEnemy: true,
+                    monster: _enemyMonster,
+                    currentHp: _enemyHp,
+                    currentStamina: _enemyStamina,
+                  ),
+                  // PEMAIN
+                  _buildArenaSide(
+                    isEnemy: false,
+                    monster: _activeMonster,
+                    currentHp: _playerHp,
+                    currentStamina: _playerStamina,
+                  ),
+                ],
               ),
             ),
+
+            // BATTLE LOG
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16.0,
+                vertical: 8.0,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 24,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white24, width: 1),
+                      ),
+                      child: TypewriterText(
+                        text: _battleLog,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (_isPlayerTurn) ...[
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: () {
+                        if (_playerHp <= 0) return;
+                        setState(() => _isSwitchMode = !_isSwitchMode);
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _isSwitchMode
+                              ? Colors.blueAccent
+                              : Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black26,
+                              blurRadius: 6,
+                              offset: Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          _isSwitchMode ? Icons.close : Icons.swap_horiz,
+                          color: _isSwitchMode
+                              ? Colors.white
+                              : Colors.blueAccent,
+                          size: 28,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            // AREA KARTU (HAND / SWITCH)
+            Expanded(
+              flex: 2,
+              child: Container(
+                padding: const EdgeInsets.all(16.0),
+                color: Colors.grey.shade900,
+                child: _isPlayerTurn
+                    ? ClipRect(
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          transitionBuilder:
+                              (Widget child, Animation<double> animation) {
+                                final isIncoming =
+                                    child.key ==
+                                    (_isSwitchMode
+                                        ? const ValueKey('switch_mode')
+                                        : const ValueKey('moves_mode'));
+                                return SlideTransition(
+                                  position: Tween<Offset>(
+                                    begin: isIncoming
+                                        ? const Offset(1.0, 0.0)
+                                        : const Offset(-1.0, 0.0),
+                                    end: Offset.zero,
+                                  ).animate(animation),
+                                  child: child,
+                                );
+                              },
+                          child: _isSwitchMode
+                              ? SingleChildScrollView(
+                                  key: const ValueKey('switch_mode'),
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: List.generate(
+                                      widget.playerParty.length,
+                                      (index) => _buildMonsterSwitchCard(
+                                        widget.playerParty[index],
+                                        index,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : Row(
+                                  key: const ValueKey('moves_mode'),
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceEvenly,
+                                  children: List.generate(
+                                    _currentCards.length,
+                                    (index) => _buildAnimatedCard(
+                                      _currentCards[index],
+                                      index,
+                                    ),
+                                  ),
+                                ),
+                        ),
+                      )
+                    : const Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedCard(MonsterMove move, int index) {
+    final intervalStart = (index * 0.2).clamp(0.0, 1.0);
+    final intervalEnd = (intervalStart + 0.6).clamp(0.0, 1.0);
+
+    return AnimatedBuilder(
+      animation: _cardAnimation,
+      builder: (context, child) {
+        final cardProgress = CurveTween(
+          curve: Interval(
+            intervalStart,
+            intervalEnd,
+            curve: Curves.easeOutQuad,
+          ),
+        ).transform(_cardAnimation.value);
+        final yOffset = (1 - cardProgress) * 150;
+        final rotationY = (1 - cardProgress) * (pi / 2);
+
+        return Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.001)
+            ..translate(0.0, yOffset, 0.0)
+            ..rotateY(rotationY),
+          child: Opacity(opacity: cardProgress, child: _buildCard(move)),
+        );
+      },
+    );
+  }
+
+  Widget _buildShakeAnimator({
+    required AnimationController controller,
+    required Widget child,
+  }) {
+    return AnimatedBuilder(
+      animation: controller,
+      child: child,
+      builder: (context, child) {
+        final sineValue = sin(pi * 4 * controller.value);
+        return Transform.translate(
+          offset: Offset(sineValue * 8, 0),
+          child: child,
+        );
+      },
+    );
+  }
+
+  Widget _buildArenaSide({
+    required bool isEnemy,
+    required Monster monster,
+    required int currentHp,
+    int? currentStamina,
+  }) {
+    final alignment = isEnemy ? Alignment.topRight : Alignment.bottomLeft;
+    final crossAxisAlignment = isEnemy
+        ? CrossAxisAlignment.end
+        : CrossAxisAlignment.start;
+    final padding = isEnemy
+        ? const EdgeInsets.only(top: 32, right: 24)
+        : const EdgeInsets.only(bottom: 32, left: 24);
+
+    return Align(
+      alignment: alignment,
+      child: Padding(
+        padding: padding,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: crossAxisAlignment,
+          children: [
+            Container(
+              width: 200,
+              height: 50,
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(50),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildShakeAnimator(
+              controller: isEnemy
+                  ? _enemyShakeController
+                  : _playerShakeController,
+              child: _buildHealthBar(
+                monster,
+                currentHp,
+                monster.hp,
+                currentStamina ?? monster.stamina,
+                isEnemy: isEnemy,
+              ),
+            ),
+            if (isEnemy) ...[
+              if (_enemyBurnTurns > 0)
+                _buildStatusEffectIndicator(
+                  'Burn',
+                  _enemyBurnTurns,
+                  3,
+                  Icons.local_fire_department,
+                  Colors.orange,
+                ),
+              if (_enemyBindTurns > 0)
+                _buildStatusEffectIndicator(
+                  'Bind',
+                  _enemyBindTurns,
+                  1,
+                  Icons.link_off,
+                  Colors.blue,
+                ),
+              if (_enemyInvulnerableTurns > 0)
+                _buildStatusEffectIndicator(
+                  'Miss',
+                  _enemyInvulnerableTurns,
+                  2,
+                  Icons.visibility_off,
+                  Colors.grey,
+                ),
+              if (_enemyParalysisTurns > 0)
+                _buildStatusEffectIndicator(
+                  'Paralysis',
+                  _enemyParalysisTurns,
+                  1,
+                  Icons.bolt,
+                  Colors.amber,
+                ),
+            ] else ...[
+              if (_playerBurnTurns > 0)
+                _buildStatusEffectIndicator(
+                  'Burn',
+                  _playerBurnTurns,
+                  3,
+                  Icons.local_fire_department,
+                  Colors.orange,
+                ),
+              if (_playerBindTurns > 0)
+                _buildStatusEffectIndicator(
+                  'Bind',
+                  _playerBindTurns,
+                  1,
+                  Icons.link_off,
+                  Colors.blue,
+                ),
+              if (_playerInvulnerableTurns > 0)
+                _buildStatusEffectIndicator(
+                  'Miss',
+                  _playerInvulnerableTurns,
+                  2,
+                  Icons.visibility_off,
+                  Colors.grey,
+                ),
+              if (_playerParalysisTurns > 0)
+                _buildStatusEffectIndicator(
+                  'Paralysis',
+                  _playerParalysisTurns,
+                  1,
+                  Icons.bolt,
+                  Colors.amber,
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDamageText(int damage, {required bool isEnemy}) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 800),
+      onEnd: () => setState(
+        () => isEnemy ? _enemyDamageValue = 0 : _playerDamageValue = 0,
+      ),
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: 1.0 - value,
+          child: Transform.translate(
+            offset: Offset(0.0, -50.0 * value),
+            child: Text(
+              '-$damage',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                shadows: [
+                  Shadow(
+                    blurRadius: 2.0,
+                    color: Colors.black,
+                    offset: Offset(1.0, 1.0),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHealthBar(
+    Monster monster,
+    int currentHp,
+    int maxHp,
+    int currentStamina, {
+    required bool isEnemy,
+  }) {
+    int oldHp = isEnemy ? _oldEnemyHp : _oldPlayerHp;
+    double oldHpPercent = max(0, oldHp / maxHp);
+    double newHpPercent = max(0, currentHp / maxHp);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      width: 200,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.black12, width: 2),
+        boxShadow: const [
+          BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(2, 2)),
         ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    _getElementIcon(monster.element),
+                    size: 16,
+                    color: monster.elementColor,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    monster.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              Text(
+                'Lv${monster.level}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: oldHpPercent, end: newHpPercent),
+            duration: const Duration(milliseconds: 800),
+            builder: (context, animatedValue, child) {
+              Color hpColor = animatedValue > 0.5
+                  ? Colors.green
+                  : (animatedValue > 0.2 ? Colors.orange : Colors.red);
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: animatedValue,
+                  backgroundColor: Colors.grey.shade300,
+                  color: hpColor,
+                  minHeight: 8,
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              '$currentHp / $maxHp HP',
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+            ),
+          ),
+          const Divider(height: 12),
+          Row(
+            children: [
+              const Icon(
+                Icons.battery_charging_full,
+                size: 12,
+                color: Colors.teal,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '$currentStamina / ${monster.stamina} SP',
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusEffectIndicator(
+    String name,
+    int currentTurnsLeft,
+    int maxTurns,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 14),
+          const SizedBox(width: 6),
+          Text(
+            '$currentTurnsLeft Turn(s) $name',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCard(MonsterMove move) {
+    Color bgColor = Colors.white;
+    IconData icon = Icons.sports_mma;
+
+    if (move.type == MoveType.elemental) {
+      bgColor = _activeMonster.elementColor;
+      icon = _getElementIcon(_activeMonster.element);
+    } else if (move.type == MoveType.special) {
+      bgColor = Colors.purple.shade400;
+      icon = Icons.auto_awesome;
+    } else if (move.type == MoveType.recover) {
+      bgColor = Colors.teal.shade300;
+      icon = Icons.healing;
+    }
+
+    String typeLabel = move.type == MoveType.elemental
+        ? 'ELEMENT'
+        : (move.type == MoveType.special ? 'SPECIAL' : 'NORMAL');
+    if (move.type == MoveType.recover) typeLabel = 'RECOVER';
+    Color textColor = move.type == MoveType.normal
+        ? Colors.black87
+        : Colors.white;
+
+    return GestureDetector(
+      onTap: () => _playTurn(move),
+      child: Container(
+        width: 130,
+        height: 190,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.8), width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.2),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(14),
+                  topRight: Radius.circular(14),
+                ),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'COST',
+                    style: TextStyle(
+                      color: textColor.withOpacity(0.7),
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    move.cost > 0 ? '${move.cost}' : '+${-move.cost}',
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: Text(
+                    move.name,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: textColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black.withOpacity(0.4),
+                          blurRadius: 2,
+                          offset: const Offset(1, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.2),
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(14),
+                  bottomRight: Radius.circular(14),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, color: textColor, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    typeLabel,
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMonsterSwitchCard(Monster monster, int index) {
+    bool isDead = _partyHp[monster]! <= 0;
+    bool isActive = monster == _activeMonster;
+    bool disabled = isDead || isActive;
+    Color bgColor = monster.elementColor;
+
+    return GestureDetector(
+      onTap: disabled ? null : () => _switchMonster(monster),
+      child: Opacity(
+        opacity: disabled ? 0.6 : 1.0,
+        child: Container(
+          width: 130,
+          height: 190,
+          margin: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.8), width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.2),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(14),
+                    topRight: Radius.circular(14),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'LVL ${monster.level}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      isActive ? 'ACTIVE' : (isDead ? 'FAINTED' : 'SWAP'),
+                      style: TextStyle(
+                        color: isActive
+                            ? Colors.amber
+                            : (isDead ? Colors.red : Colors.white),
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _getElementIcon(monster.element),
+                        size: 48,
+                        color: Colors.white.withOpacity(0.9),
+                      ),
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                        child: Text(
+                          monster.name,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withOpacity(0.4),
+                                blurRadius: 2,
+                                offset: const Offset(1, 1),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.2),
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(14),
+                    bottomRight: Radius.circular(14),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      'HP',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    LinearProgressIndicator(
+                      value: _partyHp[monster]! / monster.hp,
+                      backgroundColor: Colors.black26,
+                      color: isDead ? Colors.red : Colors.green,
+                      minHeight: 6,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${_partyHp[monster]}/${monster.hp}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
