@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:monster_battle_game/main.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class PartyScreen extends StatefulWidget {
   final List<Monster> party;
@@ -78,21 +80,79 @@ class _PartyScreenState extends State<PartyScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Tombol kembali hanya muncul di tampilan mobile jika ini adalah root
-              // Jika tidak, AppBar di MonsterDetailScreen yang akan menanganinya.
-              if (Navigator.canPop(context))
-                IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              const Text(
-                'My Party',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
+              Row(
+                children: [
+                  // Tombol kembali hanya muncul di tampilan mobile jika ini adalah root
+                  // Jika tidak, AppBar di MonsterDetailScreen yang akan menanganinya.
+                  if (Navigator.canPop(context))
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  const Text(
+                    'My Party',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  // Indikator Gold
+                  FutureBuilder<int>(
+                    future: SaveManager.loadGold(),
+                    builder: (context, snapshot) {
+                      final gold = snapshot.data ?? 0;
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade100,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.amber.shade400,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.monetization_on,
+                              color: Colors.amber.shade700,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '$gold',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber.shade900,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.logout, color: Colors.redAccent),
+                    tooltip: 'Keluar (Logout)',
+                    onPressed: () async {
+                      await FirebaseAuth.instance.signOut();
+                      await GoogleSignIn().signOut();
+                    },
+                  ),
+                ],
               ),
             ],
           ),

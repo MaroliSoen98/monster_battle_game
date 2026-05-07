@@ -1,576 +1,15 @@
-import 'package:flutter/material.dart';
-import 'dart:math';
-import 'dart:async';
-import 'package:monster_battle_game/main.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+part of 'battle_arena.dart';
 
-// ============================================================================
-// 1. MENU BATTLE UTAMA
-// ============================================================================
-class BattleMenuScreen extends StatefulWidget {
-  final List<Monster> party;
-
-  const BattleMenuScreen({super.key, required this.party});
-
-  @override
-  State<BattleMenuScreen> createState() => _BattleMenuScreenState();
-}
-
-class _BattleMenuScreenState extends State<BattleMenuScreen> {
-  // Simulasi kuota pertarungan harian
-  int _wildBattlesLeft = 10;
-
-  void _startPvPBattle() {
-    if (widget.party.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Party kamu kosong!')));
-      return;
-    }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => PvPMenuScreen(party: widget.party),
-      ),
-    );
-  }
-
-  void _startWildBattle() {
-    if (_wildBattlesLeft > 0) {
-      if (widget.party.isEmpty) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Party kamu kosong!')));
-        return;
-      }
-
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => WildBattleArena(
-            playerMonster:
-                widget.party.first, // Gunakan monster pertama di party
-            party: widget.party, // Bawa seluruh party ke pertarungan
-            onBattleEnd: (bool won) {
-              if (won) {
-                // Ketika battle selesai dan menang, kurangi kuota
-                // dan perbarui UI saat kembali ke layar ini.
-                if (mounted) {
-                  setState(() {
-                    _wildBattlesLeft--;
-                  });
-                }
-              }
-            },
-          ),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Kuota Wild Battle hari ini sudah habis!'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Battle Arena',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: Colors.black87,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Pilih Mode Pertarungan',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 24),
-            // Sub Menu: Wild Battle
-            GestureDetector(
-              onTap: _startWildBattle,
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.green.shade600, Colors.green.shade400],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.green.withOpacity(0.4),
-                      blurRadius: 15,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.pets,
-                        color: Colors.white,
-                        size: 40,
-                      ),
-                    ),
-                    const SizedBox(width: 20),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Wild Battle',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Lawan monster liar secara acak.\nSisa hari ini: $_wildBattlesLeft/10',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.arrow_forward_ios, color: Colors.white),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            // Sub Menu: PvP Battle
-            GestureDetector(
-              onTap: _startPvPBattle,
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.purple.shade600, Colors.purple.shade400],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.purple.withOpacity(0.4),
-                      blurRadius: 15,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.people,
-                        color: Colors.white,
-                        size: 40,
-                      ),
-                    ),
-                    const SizedBox(width: 20),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'PvP Battle',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Lawan pemain lain secara online.',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.arrow_forward_ios, color: Colors.white),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            // Sub Menu: Infinite Tower
-            GestureDetector(
-              onTap: _startInfiniteTower,
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.orange.shade600, Colors.orange.shade400],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.orange.withOpacity(0.4),
-                      blurRadius: 15,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.account_tree,
-                        color: Colors.white,
-                        size: 40,
-                      ),
-                    ),
-                    const SizedBox(width: 20),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Infinite Tower',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Hadapi 100 trainer dari level 1-100.\nHadiah meningkat seiring level!',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.arrow_forward_ios, color: Colors.white),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _startInfiniteTower() {
-    if (widget.party.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Party kamu kosong!')));
-      return;
-    }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => InfiniteTowerScreen(party: widget.party),
-      ),
-    );
-  }
-}
-
-// ============================================================================
-// WIDGET UNTUK EFEK TEKS BERJALAN (TYPEWRITER)
-// ============================================================================
-class TypewriterText extends StatefulWidget {
-  final String text;
-  final TextStyle style;
-  final TextAlign textAlign;
-  final int maxLines;
-
-  const TypewriterText({
-    super.key,
-    required this.text,
-    required this.style,
-    this.textAlign = TextAlign.center,
-    this.maxLines = 3,
-  });
-
-  @override
-  State<TypewriterText> createState() => _TypewriterTextState();
-}
-
-class _TypewriterTextState extends State<TypewriterText> {
-  String _displayedText = '';
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _animateText();
-  }
-
-  @override
-  void didUpdateWidget(TypewriterText oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.text != oldWidget.text) {
-      _animateText();
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  void _animateText() {
-    _timer?.cancel();
-    setState(() {
-      _displayedText = '';
-    });
-
-    int charIndex = 0;
-    _timer = Timer.periodic(const Duration(milliseconds: 15), (timer) {
-      if (charIndex < widget.text.length) {
-        setState(() {
-          _displayedText += widget.text[charIndex];
-          charIndex++;
-        });
-      } else {
-        timer.cancel();
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      _displayedText,
-      style: widget.style,
-      textAlign: widget.textAlign,
-      maxLines: widget.maxLines,
-      overflow: TextOverflow.ellipsis,
-    );
-  }
-}
-
-// Custom Clipper Dinamis untuk setengah layar atas (Musuh)
-class DynamicTopClipper extends CustomClipper<Path> {
-  final double morphProgress;
-  DynamicTopClipper(this.morphProgress);
-
-  @override
-  Path getClip(Size size) {
-    final path = Path();
-    final leftY = (size.height / 2) * (1 - morphProgress);
-    final rightY = (size.height / 2) + (size.height / 2) * morphProgress;
-
-    path.moveTo(0, 0);
-    path.lineTo(size.width, 0);
-    path.lineTo(size.width, rightY);
-    path.lineTo(0, leftY);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(DynamicTopClipper oldClipper) =>
-      morphProgress != oldClipper.morphProgress;
-}
-
-// Custom Clipper Dinamis untuk setengah layar bawah (Pemain)
-class DynamicBottomClipper extends CustomClipper<Path> {
-  final double morphProgress;
-  DynamicBottomClipper(this.morphProgress);
-
-  @override
-  Path getClip(Size size) {
-    final path = Path();
-    final leftY = (size.height / 2) * (1 - morphProgress);
-    final rightY = (size.height / 2) + (size.height / 2) * morphProgress;
-
-    path.moveTo(0, leftY);
-    path.lineTo(size.width, rightY);
-    path.lineTo(size.width, size.height);
-    path.lineTo(0, size.height);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(DynamicBottomClipper oldClipper) =>
-      morphProgress != oldClipper.morphProgress;
-}
-
-// ============================================================================
-// 2. WILD BATTLE ARENA
-// ============================================================================
-class WildBattleArena extends StatefulWidget {
-  final Monster playerMonster;
-  final List<Monster> party;
-  final Function(bool won) onBattleEnd;
-
-  const WildBattleArena({
-    super.key,
-    required this.playerMonster,
-    required this.party,
-    required this.onBattleEnd,
-  });
-
-  @override
-  State<WildBattleArena> createState() => _WildBattleArenaState();
-}
-
-class _WildBattleArenaState extends State<WildBattleArena>
-    with TickerProviderStateMixin {
-  late Monster _activeMonster;
-  late Monster _enemyMonster;
-
-  Map<Monster, int> _partyHp = {};
-  Map<Monster, int> _partyStamina = {};
-
-  // Status HP
-  late int _playerHp;
-  late int _enemyHp;
-  late int _oldPlayerHp; // Untuk animasi bar HP
-  late int _oldEnemyHp; // Untuk animasi bar HP
-  late int _playerStamina, _enemyStamina;
-
-  // Sistem Kartu (Deck)
-  List<MonsterMove> _currentCards = [];
-  bool _isPlayerTurn = true;
-  bool _isCaptureMode = false;
-  bool _isSwitchMode = false;
-  String _battleLog = "Pertarungan dimulai!";
-
-  // Untuk animasi damage
-  late AnimationController _cardAnimationController;
-  late Animation<double> _cardAnimation;
-  late AnimationController _clashController;
-  late AnimationController _playerShakeController;
-  late AnimationController _enemyShakeController;
-
-  int _playerDamageValue = 0;
-  int _enemyDamageValue = 0;
-
-  // Efek Spesial
-  int _enemyBurnTurns = 0;
-  int _enemyBindTurns = 0;
-  int _playerBurnTurns = 0;
-  int _playerBindTurns = 0;
-  int _playerInvulnerableTurns = 0;
-  int _enemyInvulnerableTurns = 0;
-  int _playerParalysisTurns = 0;
-  int _enemyParalysisTurns = 0;
-
-  // Cooldown untuk kartu spesial
-  int _turnCount = 1;
-  int _lastSpecialCardTurn =
-      -14; // Mulai di -14 agar bisa keluar di giliran pertama (1/15)
-  int _enemyLastSpecialTurn = -14; // Cooldown untuk special move musuh (1/15)
-  int _playerConsecutiveAbsorb =
-      0; // Combo berulang untuk kartu Absorb (Player)
-  int _enemyConsecutiveAbsorb = 0; // Combo berulang untuk kartu Absorb (Enemy)
-
-  // Daftar Bola
-  final List<Map<String, dynamic>> _captureBalls = [
-    {'name': 'Basic Ball', 'bonus': 1.0, 'color': Colors.red, 'quantity': 10},
-    {'name': 'Power Ball', 'bonus': 1.5, 'color': Colors.blue, 'quantity': 5},
-    {'name': 'Locked Ball', 'bonus': 2.0, 'color': Colors.amber, 'quantity': 3},
-  ];
-
-  void _syncPartyStats() {
-    _partyHp[_activeMonster] = _playerHp;
-    _partyStamina[_activeMonster] = _playerStamina;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _activeMonster = widget.party.first;
-    for (var m in widget.party) {
-      _partyHp[m] = m.hp;
-      _partyStamina[m] = m.stamina;
-    }
-
-    _enemyMonster = _generateRandomEnemy();
-    _playerHp = _partyHp[_activeMonster]!;
-    _enemyHp = _enemyMonster.hp;
-    _oldPlayerHp = _playerHp;
-    _oldEnemyHp = _enemyMonster.hp;
-    _playerStamina = _partyStamina[_activeMonster]!;
-    _enemyStamina = _enemyMonster.stamina;
-    _cardAnimationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500), // Perpanjang durasi total
-    );
-    _clashController = AnimationController(
-      vsync: this,
-      duration: const Duration(
-        milliseconds: 1800,
-      ), // Diperlama untuk animasi garis clash
-    );
-    _playerShakeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
-    _enemyShakeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
-    _cardAnimation = CurvedAnimation(
-      parent: _cardAnimationController,
-      curve: Curves.easeOut,
-    );
-    _cardAnimationController.forward();
-    _clashController.forward();
-    _drawCards();
-  }
-
-  @override
-  void dispose() {
-    _cardAnimationController.dispose();
-    _clashController.dispose();
-    _playerShakeController.dispose();
-    _enemyShakeController.dispose();
-    super.dispose();
+/// Mixin berisi semua fungsi bantuan UI dan logika elemen dasar yang di-share
+/// ke WildBattleArena, PvPBattleArena, dan InfiniteTowerBattleArena
+mixin BattleSharedMixin<T extends StatefulWidget> on State<T> {
+  MonsterElement _getElement(String elementStr) {
+    if (elementStr == 'Api') return MonsterElement.Api;
+    if (elementStr == 'Air') return MonsterElement.Air;
+    if (elementStr == 'Listrik') return MonsterElement.Listrik;
+    if (elementStr == 'Tanah') return MonsterElement.Tanah;
+    if (elementStr == 'Terbang') return MonsterElement.Terbang;
+    return MonsterElement.Tumbuhan;
   }
 
   IconData _getElementIcon(MonsterElement element) {
@@ -590,7 +29,23 @@ class _WildBattleArenaState extends State<WildBattleArena>
     }
   }
 
-  // Helper to check elemental advantage
+  Color _getElementColor(MonsterElement element) {
+    switch (element) {
+      case MonsterElement.Api:
+        return Colors.red.shade400;
+      case MonsterElement.Air:
+        return Colors.blue.shade400;
+      case MonsterElement.Tumbuhan:
+        return Colors.green.shade400;
+      case MonsterElement.Listrik:
+        return Colors.yellow.shade600;
+      case MonsterElement.Tanah:
+        return Colors.brown.shade600;
+      case MonsterElement.Terbang:
+        return Colors.lightBlue.shade100;
+    }
+  }
+
   bool _isSuperEffective(MonsterElement attacker, MonsterElement defender) {
     return (attacker == MonsterElement.Api &&
             defender == MonsterElement.Tumbuhan) ||
@@ -625,6 +80,384 @@ class _WildBattleArenaState extends State<WildBattleArena>
             defender == MonsterElement.Terbang) ||
         (attacker == MonsterElement.Listrik &&
             defender == MonsterElement.Tanah);
+  }
+
+  Future<void> _showLevelUpDialog(
+    List<Map<String, num>> allLevelUps,
+    Monster monster,
+    int initialLevel,
+  ) {
+    Map<String, num> totalIncreases = {};
+    for (var increases in allLevelUps) {
+      increases.forEach((key, value) {
+        totalIncreases[key] = (totalIncreases[key] ?? 0) + value;
+      });
+    }
+
+    double oldAttack = monster.attack - (totalIncreases['Attack'] ?? 0);
+    double oldDefense = monster.defense - (totalIncreases['Defense'] ?? 0.0);
+    int oldHp = monster.hp - (totalIncreases['HP'] ?? 0).toInt();
+    int oldSpeed = monster.speed - (totalIncreases['Speed'] ?? 0).toInt();
+    int oldStamina = monster.stamina - (totalIncreases['Stamina'] ?? 0).toInt();
+
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          '✨ ${monster.name} Naik Level! ✨',
+          textAlign: TextAlign.center,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(
+                  begin: initialLevel.toDouble(),
+                  end: monster.level.toDouble(),
+                ),
+                duration: const Duration(milliseconds: 800),
+                builder: (context, value, child) {
+                  return Text(
+                    'Level ${value.toInt()}',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  );
+                },
+              ),
+            ),
+            const Divider(height: 24),
+            _buildStatIncreaseRow(
+              'HP',
+              oldHp,
+              monster.hp,
+              totalIncreases['HP']!,
+            ),
+            _buildStatIncreaseRow(
+              'Attack',
+              oldAttack,
+              monster.attack,
+              totalIncreases['Attack']!,
+            ),
+            _buildStatIncreaseRow(
+              'Defense',
+              oldDefense,
+              monster.defense,
+              totalIncreases['Defense']!,
+            ),
+            _buildStatIncreaseRow(
+              'Speed',
+              oldSpeed,
+              monster.speed,
+              totalIncreases['Speed']!,
+            ),
+            _buildStatIncreaseRow(
+              'Stamina',
+              oldStamina,
+              monster.stamina,
+              totalIncreases['Stamina']!,
+            ),
+          ],
+        ),
+        actions: [
+          Center(
+            child: ElevatedButton(
+              onPressed: () {
+                Future.delayed(const Duration(milliseconds: 1500), () {
+                  if (mounted) {
+                    Navigator.pop(context);
+                  }
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Hebat!',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatIncreaseRow(
+    String label,
+    num oldValue,
+    num newValue,
+    num increase,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('$label:', style: const TextStyle(fontWeight: FontWeight.w600)),
+          SizedBox(
+            width: 120,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(
+                begin: oldValue.toDouble(),
+                end: newValue.toDouble(),
+              ),
+              duration: const Duration(milliseconds: 1200),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, child) {
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      value.toInt().toString(),
+                      style: const TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    AnimatedOpacity(
+                      opacity: value < newValue.toDouble() ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 300),
+                      child: Text(
+                        '(+${increase.toInt()})',
+                        style: const TextStyle(
+                          color: Colors.green,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShakeAnimator({
+    required AnimationController controller,
+    required Widget child,
+  }) {
+    return AnimatedBuilder(
+      animation: controller,
+      child: child,
+      builder: (context, child) {
+        final sineValue = sin(pi * 4 * controller.value);
+        return Transform.translate(
+          offset: Offset(sineValue * 8, 0),
+          child: child,
+        );
+      },
+    );
+  }
+
+  Widget _buildStatusEffectIndicator(
+    String name,
+    int currentTurnsLeft,
+    int maxTurns,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 14),
+          const SizedBox(width: 6),
+          Text(
+            '$currentTurnsLeft Turn(s) $name',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class WildBattleArena extends StatefulWidget {
+  final Monster playerMonster;
+  final List<Monster> party;
+  final Function(bool won) onBattleEnd;
+
+  const WildBattleArena({
+    super.key,
+    required this.playerMonster,
+    required this.party,
+    required this.onBattleEnd,
+  });
+
+  @override
+  State<WildBattleArena> createState() => _WildBattleArenaState();
+}
+
+class _WildBattleArenaState extends State<WildBattleArena>
+    with TickerProviderStateMixin, BattleSharedMixin<WildBattleArena> {
+  late Monster _activeMonster;
+  late Monster _enemyMonster;
+
+  final Map<Monster, int> _partyHp = {};
+  final Map<Monster, int> _partyStamina = {};
+
+  // Status HP
+  late int _playerHp;
+  late int _enemyHp;
+  late int _oldPlayerHp; // Untuk animasi bar HP
+  late int _oldEnemyHp; // Untuk animasi bar HP
+  late int _playerStamina, _enemyStamina;
+
+  // Sistem Kartu (Deck)
+  final List<MonsterMove> _currentCards = [];
+  bool _isPlayerTurn = true;
+  bool _isCaptureMode = false;
+  bool _isSwitchMode = false;
+  String _battleLog = "Pertarungan dimulai!";
+
+  // Untuk animasi damage
+  late AnimationController _cardAnimationController;
+  late Animation<double> _cardAnimation;
+  late AnimationController _clashController;
+  late AnimationController _playerShakeController;
+  late AnimationController _enemyShakeController;
+
+  int _playerDamageValue = 0;
+  int _enemyDamageValue = 0;
+
+  // Efek Spesial
+  int _enemyBurnTurns = 0;
+  int _enemyBindTurns = 0;
+  int _playerBurnTurns = 0;
+  int _playerBindTurns = 0;
+  int _playerInvulnerableTurns = 0;
+  int _enemyInvulnerableTurns = 0;
+  int _playerParalysisTurns = 0;
+  int _enemyParalysisTurns = 0;
+
+  // Cooldown untuk kartu spesial
+  int _turnCount = 1;
+  int _lastSpecialCardTurn =
+      -14; // Mulai di -14 agar bisa keluar di giliran pertama (1/15)
+  int _enemyLastSpecialTurn = -14; // Cooldown untuk special move musuh (1/15)
+  int _playerConsecutiveAbsorb =
+      0; // Combo berulang untuk kartu Absorb (Player)
+  int _enemyConsecutiveAbsorb = 0; // Combo berulang untuk kartu Absorb (Enemy)
+
+  bool _isLoading = true; // Menyimpan status loading file
+
+  // Daftar Bola
+  final List<Map<String, dynamic>> _captureBalls = [
+    {'name': 'Basic Ball', 'bonus': 1.0, 'color': Colors.red, 'quantity': 10},
+    {'name': 'Power Ball', 'bonus': 1.5, 'color': Colors.blue, 'quantity': 5},
+    {'name': 'Locked Ball', 'bonus': 2.0, 'color': Colors.amber, 'quantity': 3},
+  ];
+
+  // Fungsi untuk memuat jumlah bola dari memori internal
+  Future<void> _loadBalls() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _captureBalls[0]['quantity'] = prefs.getInt('basic_ball_qty') ?? 10;
+      _captureBalls[1]['quantity'] = prefs.getInt('power_ball_qty') ?? 5;
+      _captureBalls[2]['quantity'] = prefs.getInt('locked_ball_qty') ?? 3;
+    });
+  }
+
+  // Fungsi untuk menyimpan sisa bola ke memori internal
+  Future<void> _saveBalls() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('basic_ball_qty', _captureBalls[0]['quantity']);
+    await prefs.setInt('power_ball_qty', _captureBalls[1]['quantity']);
+    await prefs.setInt('locked_ball_qty', _captureBalls[2]['quantity']);
+  }
+
+  void _syncPartyStats() {
+    _partyHp[_activeMonster] = _playerHp;
+    _partyStamina[_activeMonster] = _playerStamina;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _activeMonster = widget.party.first;
+    for (var m in widget.party) {
+      _partyHp[m] = m.hp;
+      _partyStamina[m] = m.stamina;
+    }
+
+    _playerHp = _partyHp[_activeMonster]!;
+    _oldPlayerHp = _playerHp;
+    _playerStamina = _partyStamina[_activeMonster]!;
+    _cardAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500), // Perpanjang durasi total
+    );
+    _clashController = AnimationController(
+      vsync: this,
+      duration: const Duration(
+        milliseconds: 1800,
+      ), // Diperlama untuk animasi garis clash
+    );
+    _playerShakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _enemyShakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _cardAnimation = CurvedAnimation(
+      parent: _cardAnimationController,
+      curve: Curves.easeOut,
+    );
+
+    _loadBattleData();
+  }
+
+  Future<void> _loadBattleData() async {
+    _enemyMonster = await _generateRandomEnemy();
+    _enemyHp = _enemyMonster.hp;
+    _oldEnemyHp = _enemyHp;
+    _enemyStamina = _enemyMonster.stamina;
+
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+      _cardAnimationController.forward();
+      _clashController.forward();
+      _drawCards();
+      _loadBalls(); // Muat jumlah bola saat arena terbuka
+    }
+  }
+
+  @override
+  void dispose() {
+    _cardAnimationController.dispose();
+    _clashController.dispose();
+    _playerShakeController.dispose();
+    _enemyShakeController.dispose();
+    super.dispose();
   }
 
   // Menghitung damage berdasarkan formula baru
@@ -729,22 +562,52 @@ class _WildBattleArenaState extends State<WildBattleArena>
     return {'damage': finalDamageDouble.floor(), 'log': typeLog + critLog};
   }
 
-  // Mockup untuk menghasilkan musuh acak
-  Monster _generateRandomEnemy() {
+  // Menghasilkan musuh dengan membaca dari file monsters.csv
+  Future<Monster> _generateRandomEnemy() async {
     final random = Random();
-    final elements = [
-      MonsterElement.Api,
-      MonsterElement.Air,
-      MonsterElement.Tumbuhan,
-      MonsterElement.Listrik,
-      MonsterElement.Tanah,
-      MonsterElement.Terbang,
-    ];
-    final rIndex = random.nextInt(6);
-    final selectedElement = elements[rIndex];
+    MonsterElement selectedElement = MonsterElement.Api;
+    String monsterName = "";
+
+    try {
+      final String fileData = await rootBundle.loadString(
+        'assets/monsters.csv',
+      );
+      List<String> lines = fileData.split('\n');
+
+      // Hapus header jika ada tulisan 'Nama' atau 'Name' di baris pertama
+      if (lines.isNotEmpty && lines.first.toLowerCase().contains('nama')) {
+        lines.removeAt(0);
+      }
+
+      lines.removeWhere((line) => line.trim().isEmpty);
+
+      if (lines.isNotEmpty) {
+        String randomLine = lines[random.nextInt(lines.length)];
+        // Gunakan Regex agar mendukung pemisah koma (,) maupun titik koma (;) bawaan Excel
+        List<String> columns = randomLine.split(RegExp(r'[,;]'));
+        if (columns.length >= 3) {
+          monsterName =
+              ' ${columns[1].replaceAll('"', '').trim()}'; // Ambil Kolom B, bersihkan tanda kutip
+          selectedElement = _getElement(
+            columns[2].replaceAll('"', '').trim(),
+          ); // Ambil Kolom C (Elemen)
+        }
+      }
+    } catch (e) {
+      print('Gagal membaca assets/monsters.csv: $e');
+      final elements = [
+        MonsterElement.Api,
+        MonsterElement.Air,
+        MonsterElement.Tumbuhan,
+        MonsterElement.Listrik,
+        MonsterElement.Tanah,
+        MonsterElement.Terbang,
+      ];
+      selectedElement = elements[random.nextInt(elements.length)];
+    }
+
     final enemyLevel = max(1, _activeMonster.level + random.nextInt(3) - 1);
 
-    String monsterName = "";
     String imagePath = "";
     List<MonsterMove> generatedMoves = [];
     int baseHp;
@@ -781,15 +644,17 @@ class _WildBattleArenaState extends State<WildBattleArena>
 
     switch (selectedElement) {
       case MonsterElement.Api:
-        List<String> names = [
-          'Ignis',
-          'Pyre',
-          'Blaze',
-          'Inferno',
-          'Cinder',
-          'Flare',
-        ];
-        monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        if (monsterName.isEmpty) {
+          List<String> names = [
+            'Ignis',
+            'Pyre',
+            'Blaze',
+            'Inferno',
+            'Cinder',
+            'Flare',
+          ];
+          monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        }
         imagePath = 'assets/images/fire_monster.png';
         baseHp = 60;
         baseAttack = 75;
@@ -839,15 +704,17 @@ class _WildBattleArenaState extends State<WildBattleArena>
         ];
         break;
       case MonsterElement.Air: // Represents Water/Air type
-        List<String> names = [
-          'Aqua',
-          'Hydro',
-          'Tide',
-          'Splash',
-          'Ripple',
-          'Wave',
-        ];
-        monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        if (monsterName.isEmpty) {
+          List<String> names = [
+            'Aqua',
+            'Hydro',
+            'Tide',
+            'Splash',
+            'Ripple',
+            'Wave',
+          ];
+          monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        }
         imagePath = 'assets/images/water_monster.png';
         baseHp = 65;
         baseAttack = 60;
@@ -897,15 +764,17 @@ class _WildBattleArenaState extends State<WildBattleArena>
         ];
         break;
       case MonsterElement.Tumbuhan:
-        List<String> names = [
-          'Flora',
-          'Leaf',
-          'Vine',
-          'Thorn',
-          'Root',
-          'Petal',
-        ];
-        monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        if (monsterName.isEmpty) {
+          List<String> names = [
+            'Flora',
+            'Leaf',
+            'Vine',
+            'Thorn',
+            'Root',
+            'Petal',
+          ];
+          monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        }
         imagePath = 'assets/images/plant_monster.png';
         baseHp = 70;
         baseAttack = 55;
@@ -955,15 +824,17 @@ class _WildBattleArenaState extends State<WildBattleArena>
         ];
         break;
       case MonsterElement.Listrik:
-        List<String> names = [
-          'Volt',
-          'Spark',
-          'Zap',
-          'Blitz',
-          'Thunder',
-          'Jolt',
-        ];
-        monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        if (monsterName.isEmpty) {
+          List<String> names = [
+            'Volt',
+            'Spark',
+            'Zap',
+            'Blitz',
+            'Thunder',
+            'Jolt',
+          ];
+          monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        }
         imagePath = 'assets/images/electric_monster.png';
         baseHp = 55;
         baseAttack = 70;
@@ -1013,8 +884,17 @@ class _WildBattleArenaState extends State<WildBattleArena>
         ];
         break;
       case MonsterElement.Tanah:
-        List<String> names = ['Terra', 'Rock', 'Quake', 'Dust', 'Mud', 'Stone'];
-        monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        if (monsterName.isEmpty) {
+          List<String> names = [
+            'Terra',
+            'Rock',
+            'Quake',
+            'Dust',
+            'Mud',
+            'Stone',
+          ];
+          monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        }
         imagePath = 'assets/images/ground_monster.png';
         baseHp = 80;
         baseAttack = 60;
@@ -1064,15 +944,17 @@ class _WildBattleArenaState extends State<WildBattleArena>
         ];
         break;
       case MonsterElement.Terbang:
-        List<String> names = [
-          'Aero',
-          'Zephyr',
-          'Wind',
-          'Gale',
-          'Sky',
-          'Breeze',
-        ];
-        monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        if (monsterName.isEmpty) {
+          List<String> names = [
+            'Aero',
+            'Zephyr',
+            'Wind',
+            'Gale',
+            'Sky',
+            'Breeze',
+          ];
+          monsterName = 'Wild ${names[random.nextInt(names.length)]}';
+        }
         imagePath = 'assets/images/flying_monster.png';
         baseHp = 60;
         baseAttack = 65;
@@ -1200,6 +1082,8 @@ class _WildBattleArenaState extends State<WildBattleArena>
       _isPlayerTurn = false;
       _battleLog = "Kamu melempar $ballName...";
     });
+
+    _saveBalls(); // Simpan pengurangan bola secara permanen
 
     // 1. Hitung Status Bonus
     double statusBonus = 1.0;
@@ -1438,8 +1322,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
         _enemyShakeController.forward(from: 0.0);
       }
       _battleLog =
-          statusLog +
-          "${_activeMonster.name} pakai ${move.name}!$elementalLog$effectLog";
+          "$statusLog${_activeMonster.name} pakai ${move.name}!$elementalLog$effectLog";
     });
 
     if (_enemyHp == 0) {
@@ -1470,7 +1353,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
         }
 
         if (_enemyHp == 0) {
-          _battleLog = statusLog + "Musuh kehabisan HP!";
+          _battleLog = "${statusLog}Musuh kehabisan HP!";
           _showEndGameDialog(true);
           return;
         }
@@ -1479,10 +1362,10 @@ class _WildBattleArenaState extends State<WildBattleArena>
         if (_enemyBindTurns > 0 || _enemyParalysisTurns > 0) {
           if (_enemyBindTurns > 0) {
             _enemyBindTurns--;
-            _battleLog = statusLog + "${_enemyMonster.name} Terikat!";
+            _battleLog = "$statusLog${_enemyMonster.name} Terikat!";
           } else {
             _enemyParalysisTurns--;
-            _battleLog = statusLog + "${_enemyMonster.name} Paralysis!";
+            _battleLog = "$statusLog${_enemyMonster.name} Paralysis!";
           }
           _nextPlayerTurn();
           return;
@@ -1567,8 +1450,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
 
           if (chosenMove.type == MoveType.recover) {
             _battleLog =
-                statusLog +
-                "${_enemyMonster.name} pulihkan ${-chosenMove.cost} SP!";
+                "$statusLog${_enemyMonster.name} pulihkan ${-chosenMove.cost} SP!";
           } else {
             // Attack move
             final damageResult = _calculateDamage(
@@ -1626,13 +1508,12 @@ class _WildBattleArenaState extends State<WildBattleArena>
             }
 
             _battleLog =
-                statusLog +
-                "${_enemyMonster.name} pakai ${chosenMove.name}!$elementalLog$effectLog";
+                "$statusLog${_enemyMonster.name} pakai ${chosenMove.name}!$elementalLog$effectLog";
           }
         } else {
           // No affordable moves, enemy struggles and recovers a bit of stamina
           _enemyStamina = min(_enemyMonster.stamina, _enemyStamina + 2);
-          _battleLog = statusLog + "${_enemyMonster.name} istirahat!";
+          _battleLog = "$statusLog${_enemyMonster.name} istirahat!";
         }
       });
 
@@ -1683,6 +1564,13 @@ class _WildBattleArenaState extends State<WildBattleArena>
           _activeMonster.level,
         );
       }
+    }
+
+    // Simpan perolehan Gold ke memori (Wild Battle)
+    if (won && gold > 0) {
+      SaveManager.loadGold().then((currentGold) {
+        SaveManager.saveGold(currentGold + gold);
+      });
     }
 
     // Simpan seluruh party
@@ -1826,182 +1714,17 @@ class _WildBattleArenaState extends State<WildBattleArena>
     );
   }
 
-  // Dialog untuk menampilkan kenaikan level
-  Future<void> _showLevelUpDialog(
-    List<Map<String, num>> allLevelUps,
-    Monster monster,
-    int initialLevel,
-  ) {
-    Map<String, num> totalIncreases = {};
-    for (var increases in allLevelUps) {
-      increases.forEach((key, value) {
-        totalIncreases[key] = (totalIncreases[key] ?? 0) + value;
-      });
-    }
-
-    // Hitung status lama dari status akhir dan total peningkatan
-    double oldAttack = monster.attack - (totalIncreases['Attack'] ?? 0);
-    double oldDefense = monster.defense - (totalIncreases['Defense'] ?? 0.0);
-    int oldHp = monster.hp - (totalIncreases['HP'] ?? 0).toInt();
-    int oldSpeed = monster.speed - (totalIncreases['Speed'] ?? 0).toInt();
-    int oldStamina = monster.stamina - (totalIncreases['Stamina'] ?? 0).toInt();
-
-    return showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          '✨ ${monster.name} Naik Level! ✨',
-          textAlign: TextAlign.center,
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: TweenAnimationBuilder<double>(
-                tween: Tween(
-                  begin: initialLevel.toDouble(),
-                  end: monster.level.toDouble(),
-                ),
-                duration: const Duration(milliseconds: 800),
-                builder: (context, value, child) {
-                  return Text(
-                    'Level ${value.toInt()}',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  );
-                },
-              ),
-            ),
-            const Divider(height: 24),
-            _buildStatIncreaseRow(
-              'HP',
-              oldHp,
-              monster.hp,
-              totalIncreases['HP']!,
-            ),
-            _buildStatIncreaseRow(
-              'Attack',
-              oldAttack,
-              monster.attack,
-              totalIncreases['Attack']!,
-            ),
-            _buildStatIncreaseRow(
-              'Defense',
-              oldDefense,
-              monster.defense,
-              totalIncreases['Defense']!,
-            ),
-            _buildStatIncreaseRow(
-              'Speed',
-              oldSpeed,
-              monster.speed,
-              totalIncreases['Speed']!,
-            ),
-            _buildStatIncreaseRow(
-              'Stamina',
-              oldStamina,
-              monster.stamina,
-              totalIncreases['Stamina']!,
-            ),
-          ],
-        ),
-        actions: [
-          Center(
-            child: ElevatedButton(
-              onPressed: () {
-                // Tambahkan jeda agar animasi stat dapat terlihat
-                Future.delayed(const Duration(milliseconds: 1500), () {
-                  if (mounted) {
-                    Navigator.pop(context);
-                  }
-                });
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                'Hebat!',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Widget Bantuan untuk baris peningkatan status di dialog
-  Widget _buildStatIncreaseRow(
-    String label,
-    num oldValue,
-    num newValue,
-    num increase,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text('$label:', style: const TextStyle(fontWeight: FontWeight.w600)),
-          SizedBox(
-            width: 120, // Memberi lebar tetap untuk perataan
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(
-                begin: oldValue.toDouble(),
-                end: newValue.toDouble(),
-              ),
-              duration: const Duration(milliseconds: 1200),
-              curve: Curves.easeOutCubic,
-              builder: (context, value, child) {
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.end, // Rata kanan
-                  children: [
-                    Text(
-                      value.toInt().toString(),
-                      style: const TextStyle(
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // Animasi opacity untuk teks (+increase)
-                    AnimatedOpacity(
-                      opacity: value < newValue.toDouble()
-                          ? 1.0
-                          : 0.0, // Hilang saat nilai mencapai akhir
-                      duration: const Duration(
-                        milliseconds: 300,
-                      ), // Durasi fade out
-                      child: Text(
-                        '(+${increase.toInt()})',
-                        style: const TextStyle(
-                          color: Colors.green,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFE0F7FA),
+        body: Center(
+          child: CircularProgressIndicator(color: Colors.blueAccent),
+        ),
+      );
+    }
+
     final size = MediaQuery.of(context).size;
     return Scaffold(
       backgroundColor: const Color(0xFFE0F7FA), // Warna biru langit cerah
@@ -2258,8 +1981,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
                     const SizedBox(width: 12),
                     GestureDetector(
                       onTap: () {
-                        if (_playerHp <= 0)
+                        if (_playerHp <= 0) {
                           return; // Pemain dipaksa harus memilih monster jika mati
+                        }
                         setState(() {
                           _isSwitchMode = !_isSwitchMode;
                           if (_isSwitchMode) _isCaptureMode = false;
@@ -2293,8 +2017,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
                     const SizedBox(width: 8),
                     GestureDetector(
                       onTap: () {
-                        if (_playerHp <= 0)
+                        if (_playerHp <= 0) {
                           return; // Pemain dipaksa harus memilih monster jika mati
+                        }
                         setState(() {
                           _isCaptureMode = !_isCaptureMode;
                           if (_isCaptureMode) _isSwitchMode = false;
@@ -2458,24 +2183,6 @@ class _WildBattleArenaState extends State<WildBattleArena>
             ..translate(0.0, yOffset, 0.0)
             ..rotateY(rotationY),
           child: Opacity(opacity: cardProgress, child: _buildCard(move)),
-        );
-      },
-    );
-  }
-
-  // Widget Bantuan: Animasi Goyang (Shake)
-  Widget _buildShakeAnimator({
-    required AnimationController controller,
-    required Widget child,
-  }) {
-    return AnimatedBuilder(
-      animation: controller,
-      child: child,
-      builder: (context, child) {
-        final sineValue = sin(pi * 4 * controller.value); // 2 full shakes
-        return Transform.translate(
-          offset: Offset(sineValue * 8, 0), // Goyang 8 pixel kiri-kanan
-          child: child,
         );
       },
     );
@@ -2721,40 +2428,6 @@ class _WildBattleArenaState extends State<WildBattleArena>
                 ),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Widget Bantuan: Indikator Status Efek (Burn, Bind)
-  Widget _buildStatusEffectIndicator(
-    String name,
-    int currentTurnsLeft,
-    int maxTurns,
-    IconData icon,
-    Color color,
-  ) {
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        // Durasi 2 turn
-        color: color.withOpacity(0.8),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: Colors.white, size: 14),
-          const SizedBox(width: 6),
-          Text(
-            '$currentTurnsLeft Turn(s) $name',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-            ),
           ),
         ],
       ),
@@ -3169,464 +2842,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
 // ============================================================================
 // 3. PVP BATTLE MENU
 // ============================================================================
-class PvPMenuScreen extends StatefulWidget {
-  final List<Monster> party;
 
-  const PvPMenuScreen({super.key, required this.party});
-
-  @override
-  State<PvPMenuScreen> createState() => _PvPMenuScreenState();
-}
-
-class _PvPMenuScreenState extends State<PvPMenuScreen> {
-  final TextEditingController _codeController = TextEditingController();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  void _createRoom() {
-    // 1. Buat kode room 6 digit secara acak
-    final roomCode = (Random().nextInt(900000) + 100000).toString();
-
-    // 2. Tampilkan dialog menunggu lawan TERLEBIH DAHULU agar UI tidak "nge-freeze"
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text(
-            'Room Dibuat',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const Text(
-                'Bagikan kode ini ke temanmu:',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 12,
-                  horizontal: 24,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.shade200, width: 2),
-                ),
-                child: SelectableText(
-                  roomCode,
-                  style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blueAccent,
-                    letterSpacing: 10,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              const CircularProgressIndicator(color: Colors.blueAccent),
-              const SizedBox(height: 20),
-              const Text(
-                'Menunggu lawan bergabung...',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            Center(
-              child: TextButton(
-                onPressed: () {
-                  // Hapus room dari database jika host membatalkan
-                  _firestore.collection('rooms').doc(roomCode).delete();
-                  Navigator.pop(dialogContext);
-                },
-                child: const Text(
-                  'Batal',
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    // 3. Simpan data room ke Firestore (berjalan di background)
-    _firestore
-        .collection('rooms')
-        .doc(roomCode)
-        .set({
-          'roomId': roomCode,
-          'status': 'waiting',
-          'host': {
-            'name': widget.party.first.name,
-            'hp': widget.party.first.hp,
-            'maxHp': widget.party.first.hp,
-            'stamina': widget.party.first.stamina,
-            'maxStamina': widget.party.first.stamina,
-            'level': widget.party.first.level,
-            'element': widget.party.first.element.name,
-            'attack': widget.party.first.attack,
-            'defense': widget.party.first.defense,
-            'burnTurns': 0,
-            'bindTurns': 0,
-            'paralysisTurns': 0,
-            'invulnerableTurns': 0,
-            'consecutiveAbsorb': 0,
-          },
-          'createdAt': FieldValue.serverTimestamp(),
-        })
-        .catchError((error) {
-          // Jika gagal nulis ke database, kita print errornya
-          print("Gagal membuat room di Firestore: $error");
-        });
-
-    // 4. Dengarkan perubahan pada Firestore (apabila Guest masuk)
-    StreamSubscription? roomSubscription;
-    roomSubscription = _firestore
-        .collection('rooms')
-        .doc(roomCode)
-        .snapshots()
-        .listen((snapshot) {
-          if (snapshot.exists) {
-            final data = snapshot.data()!;
-            if (data['status'] == 'playing') {
-              roomSubscription
-                  ?.cancel(); // Berhenti listen agar tidak double-trigger
-              // Lawan masuk!
-              if (Navigator.canPop(context)) {
-                Navigator.pop(context); // Tutup dialog loading
-              }
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Lawan ditemukan! Memasuki arena...'),
-                ),
-              );
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PvPBattleArena(
-                    roomCode: roomCode,
-                    playerMonster: widget.party.first,
-                    party: widget.party,
-                    isHost: true,
-                  ),
-                ),
-              );
-            }
-          }
-        });
-  }
-
-  void _joinRoom() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Gabung Room',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Masukkan 6 digit kode dari Host.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _codeController,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 24,
-                letterSpacing: 8,
-                fontWeight: FontWeight.bold,
-              ),
-              decoration: InputDecoration(
-                hintText: '000000',
-                counterText: '',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: Colors.grey.shade100,
-              ),
-              maxLength: 6,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final roomCode = _codeController.text;
-              if (roomCode.length == 6) {
-                // 1. Cek apakah room ada dan statusnya 'waiting'
-                final doc = await _firestore
-                    .collection('rooms')
-                    .doc(roomCode)
-                    .get();
-                if (doc.exists && doc.data()?['status'] == 'waiting') {
-                  // 2. Update status room jadi 'playing' dan masukkan data guest
-                  await doc.reference.update({
-                    'status': 'playing',
-                    'currentTurn': 'host', // Host mendapat giliran pertama
-                    'turnCount': 1,
-                    'log': 'Pertarungan dimulai! Giliran Host.',
-                    'guest': {
-                      'name': widget.party.first.name,
-                      'hp': widget.party.first.hp,
-                      'maxHp': widget.party.first.hp,
-                      'stamina': widget.party.first.stamina,
-                      'maxStamina': widget.party.first.stamina,
-                      'level': widget.party.first.level,
-                      'element': widget.party.first.element.name,
-                      'attack': widget.party.first.attack,
-                      'defense': widget.party.first.defense,
-                      'burnTurns': 0,
-                      'bindTurns': 0,
-                      'paralysisTurns': 0,
-                      'invulnerableTurns': 0,
-                      'consecutiveAbsorb': 0,
-                    },
-                  });
-
-                  if (!mounted) return;
-                  Navigator.pop(dialogContext); // Tutup dialog
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Berhasil gabung! Memasuki arena...'),
-                    ),
-                  );
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => PvPBattleArena(
-                        roomCode: roomCode,
-                        playerMonster: widget.party.first,
-                        party: widget.party,
-                        isHost: false,
-                      ),
-                    ),
-                  );
-                } else {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Room tidak ditemukan atau sudah penuh!'),
-                    ),
-                  );
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.indigo,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Gabung Pertarungan'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _codeController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'PvP Battle',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: Colors.black87,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Arena Multiplayer',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Tantang temanmu dan buktikan siapa yang terkuat secara online!',
-              style: TextStyle(fontSize: 14, color: Colors.black54),
-            ),
-            const SizedBox(height: 32),
-            // Card 1: Buat Room
-            GestureDetector(
-              onTap: _createRoom,
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.orange.shade600,
-                      Colors.deepOrange.shade400,
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.orange.withOpacity(0.4),
-                      blurRadius: 15,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.add_box_rounded,
-                        color: Colors.white,
-                        size: 40,
-                      ),
-                    ),
-                    const SizedBox(width: 20),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Buat Room',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Buat arena baru dan bagikan kodemu.',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.arrow_forward_ios, color: Colors.white),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            // Card 2: Gabung Room
-            GestureDetector(
-              onTap: _joinRoom,
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.indigo.shade500, Colors.blue.shade400],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blue.withOpacity(0.4),
-                      blurRadius: 15,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.sensor_door_rounded,
-                        color: Colors.white,
-                        size: 40,
-                      ),
-                    ),
-                    const SizedBox(width: 20),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Gabung Room',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Masukkan kode dan tantang temanmu.',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.arrow_forward_ios, color: Colors.white),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================================
-// 4. PVP BATTLE ARENA (REAL-TIME)
-// ============================================================================
 class PvPBattleArena extends StatefulWidget {
   final String roomCode;
   final Monster playerMonster;
@@ -3646,13 +2862,13 @@ class PvPBattleArena extends StatefulWidget {
 }
 
 class _PvPBattleArenaState extends State<PvPBattleArena>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, BattleSharedMixin<PvPBattleArena> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // Animasi & Deck
   late AnimationController _cardAnimationController;
   late Animation<double> _cardAnimation;
-  List<MonsterMove> _currentCards = [];
+  final List<MonsterMove> _currentCards = [];
 
   late AnimationController _clashController;
   late AnimationController _myShakeController;
@@ -3669,8 +2885,8 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
 
   // State Party Switch
   late Monster _activeMonster;
-  Map<Monster, int> _partyHp = {};
-  Map<Monster, int> _partyStamina = {};
+  final Map<Monster, int> _partyHp = {};
+  final Map<Monster, int> _partyStamina = {};
   bool _isSwitchMode = false;
 
   @override
@@ -3725,85 +2941,6 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     _myShakeController.dispose();
     _enemyShakeController.dispose();
     super.dispose();
-  }
-
-  MonsterElement _getElement(String elementStr) {
-    if (elementStr == 'Api') return MonsterElement.Api;
-    if (elementStr == 'Air') return MonsterElement.Air;
-    if (elementStr == 'Listrik') return MonsterElement.Listrik;
-    if (elementStr == 'Tanah') return MonsterElement.Tanah;
-    if (elementStr == 'Terbang') return MonsterElement.Terbang;
-    return MonsterElement.Tumbuhan;
-  }
-
-  IconData _getElementIcon(MonsterElement element) {
-    switch (element) {
-      case MonsterElement.Api:
-        return Icons.local_fire_department;
-      case MonsterElement.Air:
-        return Icons.water_drop;
-      case MonsterElement.Tumbuhan:
-        return Icons.eco;
-      case MonsterElement.Listrik:
-        return Icons.bolt;
-      case MonsterElement.Tanah:
-        return Icons.terrain;
-      case MonsterElement.Terbang:
-        return Icons.flutter_dash;
-    }
-  }
-
-  Color _getElementColor(MonsterElement element) {
-    switch (element) {
-      case MonsterElement.Api:
-        return Colors.red.shade400;
-      case MonsterElement.Air:
-        return Colors.blue.shade400;
-      case MonsterElement.Tumbuhan:
-        return Colors.green.shade400;
-      case MonsterElement.Listrik:
-        return Colors.yellow.shade600;
-      case MonsterElement.Tanah:
-        return Colors.brown.shade600;
-      case MonsterElement.Terbang:
-        return Colors.lightBlue.shade100;
-    }
-  }
-
-  bool _isSuperEffective(MonsterElement attacker, MonsterElement defender) {
-    return (attacker == MonsterElement.Api &&
-            defender == MonsterElement.Tumbuhan) ||
-        (attacker == MonsterElement.Tumbuhan &&
-            (defender == MonsterElement.Air ||
-                defender == MonsterElement.Tanah)) ||
-        (attacker == MonsterElement.Air && defender == MonsterElement.Api) ||
-        (attacker == MonsterElement.Listrik &&
-            (defender == MonsterElement.Air ||
-                defender == MonsterElement.Terbang)) ||
-        (attacker == MonsterElement.Tanah &&
-            (defender == MonsterElement.Api ||
-                defender == MonsterElement.Listrik)) ||
-        (attacker == MonsterElement.Terbang &&
-            defender == MonsterElement.Tumbuhan);
-  }
-
-  bool _isNotVeryEffective(MonsterElement attacker, MonsterElement defender) {
-    return (attacker == MonsterElement.Api && defender == MonsterElement.Air) ||
-        (attacker == MonsterElement.Tumbuhan &&
-            defender == MonsterElement.Api) ||
-        (attacker == MonsterElement.Air &&
-            defender == MonsterElement.Tumbuhan) ||
-        (attacker == MonsterElement.Tanah &&
-            defender == MonsterElement.Tumbuhan) ||
-        (attacker == MonsterElement.Terbang &&
-            defender == MonsterElement.Listrik);
-  }
-
-  bool _isNoEffect(MonsterElement attacker, MonsterElement defender) {
-    return (attacker == MonsterElement.Tanah &&
-            defender == MonsterElement.Terbang) ||
-        (attacker == MonsterElement.Listrik &&
-            defender == MonsterElement.Tanah);
   }
 
   // Menarik 3 kartu acak
@@ -3883,8 +3020,9 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     }
 
     double stabModifier = 1.0;
-    if (moveElement != null && moveElement == attackerElement)
+    if (moveElement != null && moveElement == attackerElement) {
       stabModifier = 1.5;
+    }
 
     double critModifier = 1.0;
     bool isCritical = random.nextInt(100) < 10;
@@ -4001,7 +3139,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
           '$myRole.burnTurns': myBurn,
           '$myRole.invulnerableTurns': myInvulnerable,
           '$myRole.paralysisTurns': myParalysis,
-          'log': statusLog + "${myData['name']} kehabisan HP karena Burn!",
+          'log': "$statusLog${myData['name']} kehabisan HP karena Burn!",
         });
         _isProcessingTurn = false;
         return;
@@ -4036,7 +3174,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
         '$myRole.invulnerableTurns': myInvulnerable,
         'currentTurn': enemyRole,
         'turnCount': FieldValue.increment(1),
-        'log': statusLog + "${myData['name']} pulihkan ${-move.cost} SP!",
+        'log': "$statusLog${myData['name']} pulihkan ${-move.cost} SP!",
       });
       _isProcessingTurn = false;
       return;
@@ -4093,8 +3231,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
           enemyRole, // Alihkan turn ke musuh agar dia bisa membalas/switch
       'turnCount': FieldValue.increment(1),
       'log':
-          statusLog +
-          "${myData['name']} pakai ${move.name}!$elementalLog$effectLog",
+          "$statusLog${myData['name']} pakai ${move.name}!$elementalLog$effectLog",
     });
     _isProcessingTurn = false;
   }
@@ -4248,198 +3385,6 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     );
   }
 
-  // Dialog untuk menampilkan kenaikan level (Diadaptasi dari WildBattle)
-  Future<void> _showLevelUpDialog(
-    List<Map<String, num>> allLevelUps,
-    Monster monster,
-    int initialLevel,
-  ) {
-    Map<String, num> totalIncreases = {};
-    for (var increases in allLevelUps) {
-      increases.forEach((key, value) {
-        totalIncreases[key] = (totalIncreases[key] ?? 0) + value;
-      });
-    }
-
-    // Hitung status lama dari status akhir dan total peningkatan
-    double oldAttack = monster.attack - (totalIncreases['Attack'] ?? 0);
-    double oldDefense = monster.defense - (totalIncreases['Defense'] ?? 0.0);
-    int oldHp = monster.hp - (totalIncreases['HP'] ?? 0).toInt();
-    int oldSpeed = monster.speed - (totalIncreases['Speed'] ?? 0).toInt();
-    int oldStamina = monster.stamina - (totalIncreases['Stamina'] ?? 0).toInt();
-
-    return showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          '✨ ${monster.name} Naik Level! ✨',
-          textAlign: TextAlign.center,
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: TweenAnimationBuilder<double>(
-                tween: Tween(
-                  begin: initialLevel.toDouble(),
-                  end: monster.level.toDouble(),
-                ),
-                duration: const Duration(milliseconds: 800),
-                builder: (context, value, child) {
-                  return Text(
-                    'Level ${value.toInt()}',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  );
-                },
-              ),
-            ),
-            const Divider(height: 24),
-            _buildStatIncreaseRow(
-              'HP',
-              oldHp,
-              monster.hp,
-              totalIncreases['HP']!,
-            ),
-            _buildStatIncreaseRow(
-              'Attack',
-              oldAttack,
-              monster.attack,
-              totalIncreases['Attack']!,
-            ),
-            _buildStatIncreaseRow(
-              'Defense',
-              oldDefense,
-              monster.defense,
-              totalIncreases['Defense']!,
-            ),
-            _buildStatIncreaseRow(
-              'Speed',
-              oldSpeed,
-              monster.speed,
-              totalIncreases['Speed']!,
-            ),
-            _buildStatIncreaseRow(
-              'Stamina',
-              oldStamina,
-              monster.stamina,
-              totalIncreases['Stamina']!,
-            ),
-          ],
-        ),
-        actions: [
-          Center(
-            child: ElevatedButton(
-              onPressed: () {
-                // Tambahkan jeda agar animasi stat dapat terlihat
-                Future.delayed(const Duration(milliseconds: 1500), () {
-                  if (mounted) {
-                    Navigator.pop(context);
-                  }
-                });
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                'Hebat!',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Widget Bantuan untuk baris peningkatan status di dialog
-  Widget _buildStatIncreaseRow(
-    String label,
-    num oldValue,
-    num newValue,
-    num increase,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text('$label:', style: const TextStyle(fontWeight: FontWeight.w600)),
-          SizedBox(
-            width: 120, // Memberi lebar tetap untuk perataan
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(
-                begin: oldValue.toDouble(),
-                end: newValue.toDouble(),
-              ),
-              duration: const Duration(milliseconds: 1200),
-              curve: Curves.easeOutCubic,
-              builder: (context, value, child) {
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.end, // Rata kanan
-                  children: [
-                    Text(
-                      value.toInt().toString(),
-                      style: const TextStyle(
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // Animasi opacity untuk teks (+increase)
-                    AnimatedOpacity(
-                      opacity: value < newValue.toDouble()
-                          ? 1.0
-                          : 0.0, // Hilang saat nilai mencapai akhir
-                      duration: const Duration(
-                        milliseconds: 300,
-                      ), // Durasi fade out
-                      child: Text(
-                        '(+${increase.toInt()})',
-                        style: const TextStyle(
-                          color: Colors.green,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Widget Bantuan: Animasi Goyang (Shake)
-  Widget _buildShakeAnimator({
-    required AnimationController controller,
-    required Widget child,
-  }) {
-    return AnimatedBuilder(
-      animation: controller,
-      child: child,
-      builder: (context, child) {
-        final sineValue = sin(pi * 4 * controller.value); // 2 full shakes
-        return Transform.translate(
-          offset: Offset(sineValue * 8, 0), // Goyang 8 pixel kiri-kanan
-          child: child,
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -4452,20 +3397,23 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
               .doc(widget.roomCode)
               .snapshots(),
           builder: (context, snapshot) {
-            if (!snapshot.hasData)
+            if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
+            }
 
             final data = snapshot.data!.data() as Map<String, dynamic>?;
-            if (data == null)
+            if (data == null) {
               return const Center(
                 child: Text('Room telah ditutup atau tidak ditemukan'),
               );
+            }
 
             final hostData = data['host'];
             final guestData = data['guest'];
 
-            if (guestData == null)
+            if (guestData == null) {
               return const Center(child: Text('Menunggu sinkronisasi...'));
+            }
 
             final myData = widget.isHost ? hostData : guestData;
             final enemyData = widget.isHost ? guestData : hostData;
@@ -4530,12 +3478,13 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
             // Cek Pergantian Turn untuk Draw Card
             if (isMyTurn && serverTurnCount > _localTurnCount && !isFinished) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted)
+                if (mounted) {
                   setState(() {
                     _localTurnCount = serverTurnCount;
                     _drawCards();
                     _cardAnimationController.forward(from: 0.0);
                   });
+                }
               });
             }
 
@@ -4780,8 +3729,9 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                         const SizedBox(width: 12),
                         GestureDetector(
                           onTap: () {
-                            if (currentMyHp <= 0)
+                            if (currentMyHp <= 0) {
                               return; // Pemain dipaksa harus memilih monster jika mati
+                            }
                             setState(() {
                               _isSwitchMode = !_isSwitchMode;
                             });
@@ -5320,38 +4270,6 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     );
   }
 
-  Widget _buildStatusEffectIndicator(
-    String name,
-    int currentTurnsLeft,
-    int maxTurns,
-    IconData icon,
-    Color color,
-  ) {
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.8),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: Colors.white, size: 14),
-          const SizedBox(width: 6),
-          Text(
-            '$currentTurnsLeft Turn(s) $name',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildCard(MonsterMove move) {
     Color bgColor = Colors.white;
     IconData icon = Icons.sports_mma;
@@ -5482,406 +4400,17 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
 // ============================================================================
 // INFINITE TOWER SCREEN
 // ============================================================================
-class InfiniteTowerScreen extends StatefulWidget {
-  final List<Monster> party;
 
-  const InfiniteTowerScreen({super.key, required this.party});
-
-  @override
-  State<InfiniteTowerScreen> createState() => _InfiniteTowerScreenState();
-}
-
-class _InfiniteTowerScreenState extends State<InfiniteTowerScreen> {
-  int _highestLevel = 0;
-  late PageController _pageController;
-
-  @override
-  void initState() {
-    super.initState();
-    // Mulai dari lantai dasar (Index 0 = Level 1)
-    _pageController = PageController(initialPage: 0);
-    _loadProgress();
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadProgress() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _highestLevel = prefs.getInt('infinite_tower_progress') ?? 0;
-    });
-
-    // Animasi sinematik merangkak naik ke lantai terakhir saat layar dibuka
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted && _pageController.hasClients) {
-          // 1 Halaman berisi 5 level.
-          int targetPage = _highestLevel ~/ 5;
-          if (targetPage > 19)
-            targetPage = 19; // Maksimal index 19 (Level 96-100)
-
-          if (targetPage > 0) {
-            _pageController.animateToPage(
-              targetPage,
-              duration: Duration(milliseconds: 1000 + (targetPage * 150)),
-              curve: Curves.easeInOutCubic,
-            );
-          }
-        }
-      });
-    });
-  }
-
-  Future<void> _saveProgress(int level) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('infinite_tower_progress', level);
-    setState(() {
-      _highestLevel = level;
-    });
-  }
-
-  int _calculateReward(int level) {
-    // Hadiah meningkat seiring level: base 100 + 50 per level
-    return 100 + (level - 1) * 50;
-  }
-
-  void _startBattle(int level) {
-    if (widget.party.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Party kamu kosong!')));
-      return;
-    }
-
-    // Generate trainer monster dengan level sesuai
-    final trainerMonster = _generateTrainerMonster(level);
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => InfiniteTowerBattleArena(
-          playerParty: widget.party,
-          trainerMonster: trainerMonster,
-          towerLevel: level,
-          onBattleEnd: (won) async {
-            if (won) {
-              // Jika menang, update progress jika level lebih tinggi
-              if (level > _highestLevel) {
-                await _saveProgress(level);
-              }
-              // Berikan hadiah
-              final reward = _calculateReward(level);
-              _showRewardDialog(reward);
-            }
-          },
-        ),
-      ),
-    );
-  }
-
-  Monster _generateTrainerMonster(int level) {
-    final random = Random();
-    final elements = [
-      MonsterElement.Api,
-      MonsterElement.Air,
-      MonsterElement.Tumbuhan,
-      MonsterElement.Listrik,
-      MonsterElement.Tanah,
-      MonsterElement.Terbang,
-    ];
-    final selectedElement = elements[random.nextInt(elements.length)];
-
-    // Trainer monster lebih kuat per level
-    int hp = 80 + level * 5;
-    double attack = 80 + level * 3.0;
-    double defense = 70 + level * 2.5;
-    int speed = 60 + level * 2;
-    int stamina = 60 + level * 3;
-
-    // Moves dengan power yang meningkat
-    List<MonsterMove> moves = [
-      MonsterMove(
-        name: 'Trainer Strike',
-        type: MoveType.normal,
-        power: 45 + level,
-        cost: -10,
-      ),
-      MonsterMove(
-        name: 'Elemental Blast',
-        type: MoveType.elemental,
-        power: 50 + level,
-        cost: 15,
-      ),
-      MonsterMove(
-        name: 'Special Attack',
-        type: MoveType.special,
-        power: 40 + level,
-        effect: level >= 50 ? 'Burn 2 turns' : null,
-        cost: 20,
-      ),
-    ];
-
-    return Monster(
-      name: 'Trainer Lv.$level',
-      element: selectedElement,
-      imagePath: 'assets/images/trainer_monster.png', // Placeholder
-      hp: hp,
-      attack: attack,
-      defense: defense,
-      speed: speed,
-      stamina: stamina,
-      level: level,
-      moves: moves,
-    );
-  }
-
-  void _showRewardDialog(int reward) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Selamat!'),
-        content: Text('Kamu mendapatkan $reward koin sebagai hadiah!'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Infinite Tower'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: Colors.black87,
-      ),
-      body: Column(
-        children: [
-          // Progress Info
-          Container(
-            padding: const EdgeInsets.all(16),
-            margin: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.orange.shade100,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.orange.shade300),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.emoji_events,
-                  color: Colors.orange.shade700,
-                  size: 32,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Level Tertinggi: $_highestLevel',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Text(
-                        'Hadapi trainer dari level 1-100!',
-                        style: TextStyle(fontSize: 14, color: Colors.black54),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Tower Levels (Step-based Scrolling / Vertical PageView)
-          Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              scrollDirection: Axis.vertical,
-              // Set true agar Index 0 (Level 1) berada di bawah, dan kita mengusap ke atas
-              reverse: true,
-              itemCount: 20, // 100 level / 5 = 20 halaman
-              itemBuilder: (context, index) {
-                return _buildTowerPage(index);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- BANTUAN RENDER TOWER ---
-
-  Widget _buildTowerPage(int pageIndex) {
-    // Tentukan aset gambar berdasarkan pageIndex (1 page = 5 level)
-    String imagePath =
-        'assets/images/tower_middle.png'; // Default untuk Level 6-95
-
-    if (pageIndex == 0) {
-      imagePath = 'assets/images/tower_bottom.png'; // Level 1-5
-    } else if (pageIndex == 19) {
-      imagePath = 'assets/images/tower_top.png'; // Level 96-100
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.grey.shade500, // Warna dasar dinding menara
-        border: const Border.symmetric(
-          // Pilar hitam tebal di pinggir agar terlihat seperti struktur bangunan
-          vertical: BorderSide(color: Colors.black87, width: 30),
-        ),
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Latar Belakang Gambar Pagoda/Tower
-          Image.asset(
-            imagePath,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              // Fallback warna jika gambar belum dimasukkan ke folder assets
-              return Container(color: Colors.grey.shade800);
-            },
-          ),
-          // Tekstur bayangan batu bata placeholder
-          const Opacity(
-            opacity: 0.1,
-            child: Icon(Icons.grid_4x4, size: 500, color: Colors.black),
-          ),
-
-          // 5 Lantai per Halaman
-          Column(
-            children: List.generate(5, (floorIndex) {
-              // Hitung level (Dari atas ke bawah).
-              // Misal pageIndex 0.
-              // floorIndex 0 (Paling atas layar) -> Lv 5.
-              // floorIndex 4 (Paling bawah layar) -> Lv 1.
-              int level = (pageIndex * 5) + (5 - floorIndex);
-              return Expanded(child: _buildFloorItem(level));
-            }),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFloorItem(int level) {
-    final isUnlocked = level <= _highestLevel + 1;
-    final isCompleted = level <= _highestLevel;
-
-    // Keamanan jika level melebihi 100
-    if (level > 100) return const SizedBox.shrink();
-
-    return Stack(
-      alignment: Alignment.bottomCenter,
-      children: [
-        // Garis Pembatas Lantai (Floor base)
-        Container(
-          height: 16,
-          decoration: BoxDecoration(
-            color: Colors.grey.shade800,
-            border: const Border(
-              top: BorderSide(color: Colors.grey, width: 2),
-              bottom: BorderSide(color: Colors.black, width: 4),
-            ),
-          ),
-        ),
-
-        // Pintu Masuk / Tombol Level
-        Padding(
-          padding: const EdgeInsets.only(
-            bottom: 16.0,
-          ), // Berdiri tepat di atas garis lantai
-          child: GestureDetector(
-            onTap: isUnlocked ? () => _startBattle(level) : null,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              width: 100,
-              height: 110, // Ukuran disesuaikan agar 5 pintu muat di layar
-              decoration: BoxDecoration(
-                color: isCompleted
-                    ? Colors.green.shade800
-                    : isUnlocked
-                    ? Colors.blue.shade800
-                    : Colors.black87,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(50),
-                  topRight: Radius.circular(50),
-                ),
-                border: Border.all(
-                  color: isUnlocked ? Colors.amber : Colors.grey.shade700,
-                  width: isUnlocked ? 3 : 2,
-                ),
-                boxShadow: isUnlocked
-                    ? [
-                        BoxShadow(
-                          color: Colors.amber.withOpacity(0.5),
-                          blurRadius: 15,
-                          spreadRadius: 2,
-                        ),
-                      ]
-                    : [],
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Lv.$level',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: isUnlocked ? Colors.white : Colors.white54,
-                      shadows: const [
-                        Shadow(color: Colors.black, blurRadius: 2),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Icon(
-                    isCompleted
-                        ? Icons.check_circle
-                        : isUnlocked
-                        ? Icons.flash_on
-                        : Icons.lock,
-                    color: isUnlocked ? Colors.amber : Colors.white54,
-                    size: 28,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ============================================================================
-// INFINITE TOWER BATTLE ARENA
-// ============================================================================
 class InfiniteTowerBattleArena extends StatefulWidget {
   final List<Monster> playerParty;
-  final Monster trainerMonster;
+  final List<Monster> trainerParty; // Mengubah dari satu monster menjadi party
   final int towerLevel;
   final Function(bool won) onBattleEnd;
 
   const InfiniteTowerBattleArena({
     super.key,
     required this.playerParty,
-    required this.trainerMonster,
+    required this.trainerParty, // Mengubah dari satu monster menjadi party
     required this.towerLevel,
     required this.onBattleEnd,
   });
@@ -5892,12 +4421,14 @@ class InfiniteTowerBattleArena extends StatefulWidget {
 }
 
 class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, BattleSharedMixin<InfiniteTowerBattleArena> {
   late Monster _activeMonster;
-  late Monster _enemyMonster; // Disamakan sebutannya seperti arena lain
+  late Monster _activeEnemyMonster; // Monster musuh yang sedang aktif
 
-  Map<Monster, int> _partyHp = {};
-  Map<Monster, int> _partyStamina = {};
+  final Map<Monster, int> _partyHp = {};
+  final Map<Monster, int> _partyStamina = {};
+  late List<Monster> _trainerParty; // Party monster trainer
+  final Map<Monster, int> _trainerPartyHp = {};
 
   // Status HP & Stamina
   late int _playerHp, _enemyHp;
@@ -5905,7 +4436,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
   late int _playerStamina, _enemyStamina;
 
   // Sistem Kartu (Deck)
-  List<MonsterMove> _currentCards = [];
+  final List<MonsterMove> _currentCards = [];
   bool _isPlayerTurn = true;
   bool _isSwitchMode = false;
   String _battleLog = "";
@@ -5936,6 +4467,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
   int _enemyLastSpecialTurn = -14;
   int _playerConsecutiveAbsorb = 0;
   int _enemyConsecutiveAbsorb = 0;
+  int _currentGold = 0; // Gold pemain
 
   void _syncPartyStats() {
     _partyHp[_activeMonster] = _playerHp;
@@ -5951,13 +4483,18 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
       _partyStamina[m] = m.stamina;
     }
 
-    _enemyMonster = widget.trainerMonster;
+    _trainerParty = widget.trainerParty;
+    for (var m in _trainerParty) {
+      _trainerPartyHp[m] = m.hp;
+    }
+
+    _activeEnemyMonster = _trainerParty.first;
     _playerHp = _partyHp[_activeMonster]!;
-    _enemyHp = _enemyMonster.hp;
+    _enemyHp = _trainerPartyHp[_activeEnemyMonster]!;
     _oldPlayerHp = _playerHp;
     _oldEnemyHp = _enemyHp;
     _playerStamina = _partyStamina[_activeMonster]!;
-    _enemyStamina = _enemyMonster.stamina;
+    _enemyStamina = _activeEnemyMonster.stamina;
     _battleLog = "Pertarungan Tower Level ${widget.towerLevel} dimulai!";
 
     _cardAnimationController = AnimationController(
@@ -5983,6 +4520,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
     _cardAnimationController.forward();
     _clashController.forward();
     _drawCards();
+    _loadGold(); // Muat jumlah gold saat arena terbuka
   }
 
   @override
@@ -5994,57 +4532,14 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
     super.dispose();
   }
 
-  IconData _getElementIcon(MonsterElement element) {
-    switch (element) {
-      case MonsterElement.Api:
-        return Icons.local_fire_department;
-      case MonsterElement.Air:
-        return Icons.water_drop;
-      case MonsterElement.Tumbuhan:
-        return Icons.eco;
-      case MonsterElement.Listrik:
-        return Icons.bolt;
-      case MonsterElement.Tanah:
-        return Icons.terrain;
-      case MonsterElement.Terbang:
-        return Icons.flutter_dash;
-    }
+  // Fungsi untuk memuat jumlah gold dari memori internal
+  Future<void> _loadGold() async {
+    _currentGold = await SaveManager.loadGold();
   }
 
-  bool _isSuperEffective(MonsterElement attacker, MonsterElement defender) {
-    return (attacker == MonsterElement.Api &&
-            defender == MonsterElement.Tumbuhan) ||
-        (attacker == MonsterElement.Tumbuhan &&
-            (defender == MonsterElement.Air ||
-                defender == MonsterElement.Tanah)) ||
-        (attacker == MonsterElement.Air && defender == MonsterElement.Api) ||
-        (attacker == MonsterElement.Listrik &&
-            (defender == MonsterElement.Air ||
-                defender == MonsterElement.Terbang)) ||
-        (attacker == MonsterElement.Tanah &&
-            (defender == MonsterElement.Api ||
-                defender == MonsterElement.Listrik)) ||
-        (attacker == MonsterElement.Terbang &&
-            defender == MonsterElement.Tumbuhan);
-  }
-
-  bool _isNotVeryEffective(MonsterElement attacker, MonsterElement defender) {
-    return (attacker == MonsterElement.Api && defender == MonsterElement.Air) ||
-        (attacker == MonsterElement.Tumbuhan &&
-            defender == MonsterElement.Api) ||
-        (attacker == MonsterElement.Air &&
-            defender == MonsterElement.Tumbuhan) ||
-        (attacker == MonsterElement.Tanah &&
-            defender == MonsterElement.Tumbuhan) ||
-        (attacker == MonsterElement.Terbang &&
-            defender == MonsterElement.Listrik);
-  }
-
-  bool _isNoEffect(MonsterElement attacker, MonsterElement defender) {
-    return (attacker == MonsterElement.Tanah &&
-            defender == MonsterElement.Terbang) ||
-        (attacker == MonsterElement.Listrik &&
-            defender == MonsterElement.Tanah);
+  // Fungsi untuk menyimpan sisa gold ke memori internal
+  Future<void> _saveGold() async {
+    await SaveManager.saveGold(_currentGold);
   }
 
   void _drawCards() {
@@ -6102,7 +4597,10 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
     if (defender.element == MonsterElement.Terbang &&
         random.nextInt(100) < 10 &&
         move.type != MoveType.recover) {
-      return {'damage': 0, 'log': ' Serangan berhasil dihindari (Evasiness)!'};
+      return {
+        'damage': 0,
+        'log': ' Serangan berhasil dihindari (Evasiveness)!',
+      };
     }
 
     MonsterElement? moveElement;
@@ -6179,6 +4677,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
     bool hasAliveMonster = widget.playerParty.any((m) => _partyHp[m]! > 0);
     if (hasAliveMonster) {
       setState(() {
+        // Menggunakan setState untuk memastikan UI terupdate
         _battleLog =
             "${_activeMonster.name} kehabisan tenaga! Pilih monster pengganti.";
         _isSwitchMode = true;
@@ -6186,7 +4685,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
       });
     } else {
       _showEndGameDialog(false);
-    }
+    } // Jika tidak ada monster yang hidup, game berakhir
   }
 
   void _switchMonster(Monster newMonster) {
@@ -6297,8 +4796,9 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
       _syncPartyStats();
 
       final damageResult = _calculateDamage(
+        // Menggunakan _activeEnemyMonster
         _activeMonster,
-        _enemyMonster,
+        _activeEnemyMonster,
         move,
         defenderBindTurns: _enemyBindTurns,
         defenderBurnTurns: _enemyBurnTurns,
@@ -6338,16 +4838,16 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
       }
 
       _enemyDamageValue = damage;
-      _oldEnemyHp = _enemyHp;
+      _oldEnemyHp = _enemyHp; // Simpan HP lama untuk animasi
       _enemyHp = max(0, _enemyHp - damage);
       if (damage > 0) _enemyShakeController.forward(from: 0.0);
 
       _battleLog =
-          statusLog +
-          "${_activeMonster.name} pakai ${move.name}!$elementalLog$effectLog";
+          "$statusLog${_activeMonster.name} pakai ${move.name}!$elementalLog$effectLog";
     });
 
     if (_enemyHp == 0) {
+      // Cek apakah monster musuh yang aktif mati
       _showEndGameDialog(true);
       return;
     }
@@ -6359,33 +4859,54 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
       if (!mounted) return;
       setState(() {
         String statusLog = "";
+        // Handle status efek pada musuh yang aktif
         if (_enemyInvulnerableTurns > 0) _enemyInvulnerableTurns--;
 
         if (_enemyBurnTurns > 0) {
-          _enemyHp = max(0, _enemyHp - 5);
+          _enemyHp = max(0, _enemyHp - 5); // Damage dari burn
           _enemyBurnTurns--;
           statusLog = "Trainer kena 5 DMG Burn! ";
         }
         if (_enemyHp == 0) {
-          _battleLog = statusLog + "Trainer kehabisan HP!";
+          // Jika monster musuh yang aktif mati karena burn
+          _battleLog = "${statusLog}Trainer kehabisan HP!";
           _showEndGameDialog(true);
           return;
         }
         if (_enemyBindTurns > 0 || _enemyParalysisTurns > 0) {
           if (_enemyBindTurns > 0) {
             _enemyBindTurns--;
-            _battleLog = statusLog + "Trainer Terikat!";
+            _battleLog = "${statusLog}Trainer Terikat!";
           } else {
             _enemyParalysisTurns--;
-            _battleLog = statusLog + "Trainer Paralysis!";
+            _battleLog = "${statusLog}Trainer Paralysis!";
           }
           _nextPlayerTurn();
           return;
         }
 
+        // Jika monster musuh yang aktif mati, coba ganti
+        if (_enemyHp <= 0) {
+          _trainerPartyHp[_activeEnemyMonster] =
+              0; // Pastikan HP di party terupdate
+          Monster? nextMonster = _trainerParty
+              .where((m) => _trainerPartyHp[m]! > 0)
+              .firstOrNull;
+
+          if (nextMonster != null) {
+            _activeEnemyMonster = nextMonster;
+            _enemyHp = _trainerPartyHp[_activeEnemyMonster]!;
+            _enemyStamina = _activeEnemyMonster.stamina;
+            _battleLog = "Trainer mengeluarkan ${_activeEnemyMonster.name}!";
+            _nextPlayerTurn(); // Langsung giliran pemain setelah switch
+            return;
+          }
+        }
+
         MonsterMove? chosenMove;
         final random = Random();
-        var affordableMoves = _enemyMonster.moves
+        var affordableMoves = _activeEnemyMonster
+            .moves // Menggunakan _activeEnemyMonster
             .where((m) => m.cost <= _enemyStamina)
             .toList();
 
@@ -6396,7 +4917,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
         if (affordableMoves.isNotEmpty) {
           Map<MonsterMove, double> moveScores = {};
           bool isPlayerWeak = _isSuperEffective(
-            _enemyMonster.element,
+            _activeEnemyMonster.element, // Menggunakan _activeEnemyMonster
             _activeMonster.element,
           );
 
@@ -6413,10 +4934,11 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                 score = 0.5;
                 break;
               case MoveType.recover:
-                if (_enemyStamina < _enemyMonster.stamina * 0.4)
+                if (_enemyStamina < _activeEnemyMonster.stamina * 0.4) {
                   score = 2.5;
-                else
+                } else {
                   score = -1.0;
+                }
                 break;
             }
             moveScores[move] = score + (random.nextDouble() * 0.5);
@@ -6431,24 +4953,27 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
         }
 
         if (chosenMove != null) {
-          if (chosenMove.type == MoveType.special)
+          if (chosenMove.type == MoveType.special) {
             _enemyLastSpecialTurn = _turnCount;
+          }
           if (chosenMove.name == 'Absorb' ||
-              chosenMove.effect == 'Drain HP & Heal')
-            _enemyConsecutiveAbsorb++;
-          else
+              chosenMove.effect == 'Drain HP & Heal') {
+            _enemyConsecutiveAbsorb++; // Lacak absorb musuh
+          } else {
             _enemyConsecutiveAbsorb = 0;
+          }
 
           _enemyStamina = min(
-            _enemyMonster.stamina,
+            // Update stamina musuh
+            _activeEnemyMonster.stamina,
             _enemyStamina - chosenMove.cost,
           );
 
           if (chosenMove.type == MoveType.recover) {
-            _battleLog = statusLog + "Trainer pulihkan ${-chosenMove.cost} SP!";
+            _battleLog = "${statusLog}Trainer pulihkan ${-chosenMove.cost} SP!";
           } else {
             final damageResult = _calculateDamage(
-              _enemyMonster,
+              _activeEnemyMonster, // Menggunakan _activeEnemyMonster
               _activeMonster,
               chosenMove,
               defenderBindTurns: _playerBindTurns,
@@ -6484,9 +5009,12 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
               int combo = min(_enemyConsecutiveAbsorb, 3);
               int bonus = (combo - 1) * 2;
               enemyDamage += bonus;
-              int healAmount = enemyDamage;
-              _oldEnemyHp = _enemyHp;
-              _enemyHp = min(_enemyMonster.hp, _enemyHp + healAmount);
+              int healAmount = enemyDamage; // Heal disesuaikan dengan damage
+              _oldEnemyHp = _enemyHp; // Simpan HP lama untuk animasi
+              _enemyHp = min(
+                _activeEnemyMonster.hp,
+                _enemyHp + healAmount,
+              ); // Menggunakan _activeEnemyMonster
               effectLog = " Musuh serap $healAmount HP!";
             }
             if (chosenMove.cost < 0 && chosenMove.type != MoveType.recover) {
@@ -6500,19 +5028,22 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
             if (enemyDamage > 0) _playerShakeController.forward(from: 0.0);
 
             _battleLog =
-                statusLog +
-                "Trainer pakai ${chosenMove.name}!$elementalLog$effectLog";
+                "${statusLog}Trainer pakai ${chosenMove.name}!$elementalLog$effectLog";
           }
         } else {
-          _enemyStamina = min(_enemyMonster.stamina, _enemyStamina + 2);
-          _battleLog = statusLog + "Trainer istirahat!";
+          _enemyStamina = min(
+            _activeEnemyMonster.stamina,
+            _enemyStamina + 2,
+          ); // Menggunakan _activeEnemyMonster
+          _battleLog = "${statusLog}Trainer istirahat!";
         }
       });
 
-      if (_playerHp == 0)
+      if (_playerHp == 0) {
         _checkPlayerFaint();
-      else
+      } else {
         _nextPlayerTurn();
+      }
     });
   }
 
@@ -6532,10 +5063,21 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
   void _showEndGameDialog(bool won) {
     widget.onBattleEnd(won);
 
-    int exp = won ? 30 + widget.towerLevel * 2 : 5;
+    final random = Random();
+    int baseExp = 20 + random.nextInt(30);
+    int baseGold = 10 + random.nextInt(20);
+
+    // Reward 2x lipat dari Wild Battle karena lebih sulit + bonus level tower
+    int exp = won ? (baseExp * 2) + (widget.towerLevel * 2) : 5;
+    int gold = won ? (baseGold * 2) + (widget.towerLevel * 2) : 0;
+
+    _currentGold += gold;
+
     List<Map<String, num>> allLevelUps = [];
     int initialLevel = _activeMonster.level;
 
+    // Logika penambahan EXP dan Level Up
+    // Hanya monster yang aktif yang mendapatkan EXP
     if (won) {
       _activeMonster.currentExp += exp;
       while (_activeMonster.currentExp >= _activeMonster.expToNextLevel) {
@@ -6550,6 +5092,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
     }
 
     SaveManager.saveParty(widget.playerParty);
+    _saveGold(); // Simpan gold terbaru
 
     showDialog(
       context: context,
@@ -6578,6 +5121,14 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
               '+ $exp EXP',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
+            if (won)
+              Text(
+                '+ $gold Gold',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange,
+                ),
+              ),
           ],
         ),
         actions: [
@@ -6607,169 +5158,6 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                 'Kembali',
                 style: TextStyle(color: Colors.white),
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showLevelUpDialog(
-    List<Map<String, num>> allLevelUps,
-    Monster monster,
-    int initialLevel,
-  ) {
-    Map<String, num> totalIncreases = {};
-    for (var increases in allLevelUps) {
-      increases.forEach((key, value) {
-        totalIncreases[key] = (totalIncreases[key] ?? 0) + value;
-      });
-    }
-
-    double oldAttack = monster.attack - (totalIncreases['Attack'] ?? 0);
-    double oldDefense = monster.defense - (totalIncreases['Defense'] ?? 0.0);
-    int oldHp = monster.hp - (totalIncreases['HP'] ?? 0).toInt();
-    int oldSpeed = monster.speed - (totalIncreases['Speed'] ?? 0).toInt();
-    int oldStamina = monster.stamina - (totalIncreases['Stamina'] ?? 0).toInt();
-
-    return showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          '✨ ${monster.name} Naik Level! ✨',
-          textAlign: TextAlign.center,
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: TweenAnimationBuilder<double>(
-                tween: Tween(
-                  begin: initialLevel.toDouble(),
-                  end: monster.level.toDouble(),
-                ),
-                duration: const Duration(milliseconds: 800),
-                builder: (context, value, child) {
-                  return Text(
-                    'Level ${value.toInt()}',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  );
-                },
-              ),
-            ),
-            const Divider(height: 24),
-            _buildStatIncreaseRow(
-              'HP',
-              oldHp,
-              monster.hp,
-              totalIncreases['HP']!,
-            ),
-            _buildStatIncreaseRow(
-              'Attack',
-              oldAttack,
-              monster.attack,
-              totalIncreases['Attack']!,
-            ),
-            _buildStatIncreaseRow(
-              'Defense',
-              oldDefense,
-              monster.defense,
-              totalIncreases['Defense']!,
-            ),
-            _buildStatIncreaseRow(
-              'Speed',
-              oldSpeed,
-              monster.speed,
-              totalIncreases['Speed']!,
-            ),
-            _buildStatIncreaseRow(
-              'Stamina',
-              oldStamina,
-              monster.stamina,
-              totalIncreases['Stamina']!,
-            ),
-          ],
-        ),
-        actions: [
-          Center(
-            child: ElevatedButton(
-              onPressed: () {
-                Future.delayed(const Duration(milliseconds: 1500), () {
-                  if (mounted) Navigator.pop(context);
-                });
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                'Hebat!',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatIncreaseRow(
-    String label,
-    num oldValue,
-    num newValue,
-    num increase,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text('$label:', style: const TextStyle(fontWeight: FontWeight.w600)),
-          SizedBox(
-            width: 120,
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(
-                begin: oldValue.toDouble(),
-                end: newValue.toDouble(),
-              ),
-              duration: const Duration(milliseconds: 1200),
-              curve: Curves.easeOutCubic,
-              builder: (context, value, child) {
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      value.toInt().toString(),
-                      style: const TextStyle(
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    AnimatedOpacity(
-                      opacity: value < newValue.toDouble() ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 300),
-                      child: Text(
-                        '(+${increase.toInt()})',
-                        style: const TextStyle(
-                          color: Colors.green,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
             ),
           ),
         ],
@@ -6832,7 +5220,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                                   child: ClipPath(
                                     clipper: DynamicTopClipper(morphProgress),
                                     child: Container(
-                                      color: _enemyMonster.elementColor,
+                                      color: _activeEnemyMonster.elementColor,
                                       child: Stack(
                                         children: [
                                           Positioned(
@@ -6840,7 +5228,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                                             right: -40,
                                             child: Icon(
                                               _getElementIcon(
-                                                _enemyMonster.element,
+                                                _activeEnemyMonster.element,
                                               ),
                                               size: 250,
                                               color: Colors.white.withOpacity(
@@ -6948,8 +5336,8 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
 
                   // MUSUH
                   _buildArenaSide(
-                    isEnemy: true,
-                    monster: _enemyMonster,
+                    isEnemy: true, // Menggunakan _activeEnemyMonster
+                    monster: _activeEnemyMonster,
                     currentHp: _enemyHp,
                     currentStamina: _enemyStamina,
                   ),
@@ -7122,23 +5510,6 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
             ..translate(0.0, yOffset, 0.0)
             ..rotateY(rotationY),
           child: Opacity(opacity: cardProgress, child: _buildCard(move)),
-        );
-      },
-    );
-  }
-
-  Widget _buildShakeAnimator({
-    required AnimationController controller,
-    required Widget child,
-  }) {
-    return AnimatedBuilder(
-      animation: controller,
-      child: child,
-      builder: (context, child) {
-        final sineValue = sin(pi * 4 * controller.value);
-        return Transform.translate(
-          offset: Offset(sineValue * 8, 0),
-          child: child,
         );
       },
     );
@@ -7388,38 +5759,6 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                 ),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusEffectIndicator(
-    String name,
-    int currentTurnsLeft,
-    int maxTurns,
-    IconData icon,
-    Color color,
-  ) {
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.8),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: Colors.white, size: 14),
-          const SizedBox(width: 6),
-          Text(
-            '$currentTurnsLeft Turn(s) $name',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-            ),
           ),
         ],
       ),
