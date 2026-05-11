@@ -14,6 +14,7 @@ class PartyScreen extends StatefulWidget {
 
 class _PartyScreenState extends State<PartyScreen> {
   Monster? _selectedMonster;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
@@ -44,6 +45,8 @@ class _PartyScreenState extends State<PartyScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
+      drawer: const AppDrawer(),
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -90,6 +93,11 @@ class _PartyScreenState extends State<PartyScreen> {
                     IconButton(
                       icon: const Icon(Icons.arrow_back_ios_new_rounded),
                       onPressed: () => Navigator.pop(context),
+                    ),
+                  if (!Navigator.canPop(context))
+                    IconButton(
+                      icon: const Icon(Icons.menu, color: Colors.black87),
+                      onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                     ),
                   const Text(
                     'My Party',
@@ -148,8 +156,35 @@ class _PartyScreenState extends State<PartyScreen> {
                     icon: const Icon(Icons.logout, color: Colors.redAccent),
                     tooltip: 'Keluar (Logout)',
                     onPressed: () async {
-                      await FirebaseAuth.instance.signOut();
-                      await GoogleSignIn().signOut();
+                      // Menampilkan dialog konfirmasi sebelum logout
+                      showDialog(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          title: const Text('Konfirmasi Logout'),
+                          content: const Text(
+                            'Apakah kamu yakin ingin keluar dari akun ini?',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              child: const Text('Batal'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () async {
+                                Navigator.pop(dialogContext);
+                                await SaveManager.clearAllData(); // Hapus cache lokal
+                                await FirebaseAuth.instance.signOut();
+                                await GoogleSignIn().signOut();
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.redAccent,
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text('Keluar'),
+                            ),
+                          ],
+                        ),
+                      );
                     },
                   ),
                 ],

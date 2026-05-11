@@ -9,6 +9,7 @@ import 'package:monster_battle_game/firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 // Enum untuk merepresentasikan elemen monster
 enum MonsterElement { Api, Air, Tumbuhan, Listrik, Tanah, Terbang }
@@ -171,6 +172,19 @@ class SaveManager {
       party.map((m) => m.toJson()).toList(),
     );
     await prefs.setString('saved_party', encodedData);
+
+    // --- CLOUD SAVE ---
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'party': party.map((m) => m.toJson()).toList(),
+          'lastUpdated': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Cloud save party error: $e');
+      }
+    }
   }
 
   static Future<List<Monster>?> loadParty() async {
@@ -186,11 +200,111 @@ class SaveManager {
   static Future<void> saveGold(int amount) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('player_gold', amount);
+
+    // --- CLOUD SAVE ---
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'gold': amount,
+          'lastUpdated': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Cloud save gold error: $e');
+      }
+    }
   }
 
   static Future<int> loadGold() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt('player_gold') ?? 0;
+  }
+
+  static Future<void> saveBalls(int basic, int power, int locked) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('basic_ball_qty', basic);
+    await prefs.setInt('power_ball_qty', power);
+    await prefs.setInt('locked_ball_qty', locked);
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'balls': {'basic': basic, 'power': power, 'locked': locked},
+          'lastUpdated': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Cloud save balls error: $e');
+      }
+    }
+  }
+
+  static Future<void> saveTowerProgress(int level) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('infinite_tower_progress', level);
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'tower_progress': level,
+          'lastUpdated': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Cloud save tower error: $e');
+      }
+    }
+  }
+
+  // Sync dari Cloud saat login (Dipanggil oleh AuthWrapper)
+  static Future<List<Monster>?> loadOrSyncData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+        if (doc.exists) {
+          final data = doc.data()!;
+          final prefs = await SharedPreferences.getInstance();
+          List<Monster>? cloudParty;
+
+          if (data.containsKey('party')) {
+            final List<dynamic> partyData = data['party'];
+            cloudParty = partyData.map((m) => Monster.fromJson(m)).toList();
+            await prefs.setString('saved_party', jsonEncode(partyData));
+          }
+          if (data.containsKey('gold')) {
+            await prefs.setInt('player_gold', data['gold']);
+          }
+          if (data.containsKey('balls')) {
+            final balls = data['balls'];
+            await prefs.setInt('basic_ball_qty', balls['basic'] ?? 10);
+            await prefs.setInt('power_ball_qty', balls['power'] ?? 5);
+            await prefs.setInt('locked_ball_qty', balls['locked'] ?? 3);
+          }
+          if (data.containsKey('tower_progress')) {
+            await prefs.setInt(
+              'infinite_tower_progress',
+              data['tower_progress'],
+            );
+          }
+
+          if (cloudParty != null) return cloudParty;
+        }
+      } catch (e) {
+        debugPrint('Cloud sync error: $e');
+      }
+    }
+    // Fallback jika tidak ada data di cloud atau pengguna tidak terhubung
+    return await loadParty();
+  }
+
+  // Hapus semua data lokal saat logout
+  static Future<void> clearAllData() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
   }
 }
 
@@ -200,20 +314,16 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   ); // Inisialisasi Firebase beserta konfigurasinya
 
-  // Load data save sebelum aplikasi mulai
-  final savedParty = await SaveManager.loadParty();
-
-  runApp(MyApp(initialParty: savedParty));
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  final List<Monster>? initialParty;
-  const MyApp({super.key, this.initialParty});
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Monster Battle Game',
+      title: 'Duel Monster',
       theme: ThemeData(
         brightness: Brightness.light,
         fontFamily: 'Poppins',
@@ -222,15 +332,14 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       // Gunakan AuthWrapper untuk mengecek status login Firebase
-      home: AuthWrapper(initialParty: initialParty),
+      home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
     );
   }
 }
 
 class AuthWrapper extends StatelessWidget {
-  final List<Monster>? initialParty;
-  const AuthWrapper({super.key, this.initialParty});
+  const AuthWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -239,17 +348,58 @@ class AuthWrapper extends StatelessWidget {
       builder: (context, snapshot) {
         // Loading saat mengecek state
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+          return Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset(
+                    'assets/images/logo.png',
+                    width: 100,
+                    height: 100,
+                  ),
+                  const SizedBox(height: 24),
+                  const CircularProgressIndicator(),
+                ],
+              ),
+            ),
           );
         }
         // Jika user sudah login
         if (snapshot.hasData) {
-          if (initialParty != null && initialParty!.isNotEmpty) {
-            return MainScreen(party: initialParty!);
-          } else {
-            return const MonsterSelectionScreen();
-          }
+          return FutureBuilder<List<Monster>?>(
+            future: SaveManager.loadOrSyncData(),
+            builder: (context, syncSnapshot) {
+              if (syncSnapshot.connectionState == ConnectionState.waiting) {
+                return Scaffold(
+                  body: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Image.asset(
+                          'assets/images/logo.png',
+                          width: 100,
+                          height: 100,
+                        ),
+                        const SizedBox(height: 24),
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 16),
+                        const Text('Menyinkronkan data Cloud...'),
+                      ],
+                    ),
+                  ),
+                );
+              }
+              final party = syncSnapshot.data;
+              if (party != null && party.isNotEmpty) {
+                return MainScreen(party: party);
+              } else {
+                return const MonsterSelectionScreen();
+              }
+            },
+          );
         }
         // Jika user belum login
         return const LoginScreen();
@@ -272,35 +422,23 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final GoogleSignIn googleSignIn = GoogleSignIn();
+      if (kIsWeb) {
+        final googleProvider = GoogleAuthProvider();
 
-      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+        await FirebaseAuth.instance.signInWithPopup(googleProvider);
+      } else {
+        final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
 
-      if (googleUser == null) {
-        return;
-      }
+        if (googleUser == null) return;
 
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+        final googleAuth = await googleUser.authentication;
 
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
 
-      final UserCredential userCredential = await FirebaseAuth.instance
-          .signInWithCredential(credential);
-
-      final User? user = userCredential.user;
-
-      if (user != null) {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'uid': user.uid,
-          'email': user.email,
-          'displayName': user.displayName,
-          'photoURL': user.photoURL,
-          'lastLogin': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+        await FirebaseAuth.instance.signInWithCredential(credential);
       }
     } catch (e) {
       if (mounted) {
@@ -348,29 +486,34 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
                 child: _isLoading
-                    ? const Center(
-                        child: CircularProgressIndicator(
-                          color: Colors.blueAccent,
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Image.asset(
+                              'assets/images/logo.png',
+                              width: 80,
+                              height: 80,
+                            ),
+                            const SizedBox(height: 24),
+                            const CircularProgressIndicator(
+                              color: Colors.blueAccent,
+                            ),
+                          ],
                         ),
                       )
                     : Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.red.shade50,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.catching_pokemon,
-                              size: 80,
-                              color: Colors.redAccent,
-                            ),
+                          Image.asset(
+                            'assets/images/logo.png',
+                            width: 100,
+                            height: 100,
                           ),
                           const SizedBox(height: 24),
                           const Text(
-                            'Monster Battle',
+                            'Duel Monster',
                             style: TextStyle(
                               fontSize: 32,
                               fontWeight: FontWeight.bold,
@@ -1003,6 +1146,99 @@ class MonsterCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(4),
         ),
       ],
+    );
+  }
+}
+
+// ============================================================================
+// WIDGET DRAWER (HAMBURGER MENU - SUB MENU)
+// ============================================================================
+class AppDrawer extends StatelessWidget {
+  const AppDrawer({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      width:
+          MediaQuery.of(context).size.width *
+          0.5, // Tepat memakan separuh layar
+      child: Column(
+        children: [
+          DrawerHeader(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.blue.shade900, Colors.blue.shade500],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            margin: EdgeInsets.zero,
+            child: const SizedBox(
+              width: double.infinity,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Icon(Icons.menu_open, color: Colors.white, size: 36),
+                  SizedBox(height: 12),
+                  Text(
+                    'Sub Menu',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.person, color: Colors.blueAccent),
+                  title: const Text('Profil'),
+                  onTap: () {
+                    Navigator.pop(context); // Tutup drawer saat diklik
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Menu Profil belum tersedia'),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.settings, color: Colors.blueAccent),
+                  title: const Text('Pengaturan'),
+                  onTap: () {
+                    Navigator.pop(context); // Tutup drawer
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Menu Pengaturan belum tersedia'),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.info_outline,
+                    color: Colors.blueAccent,
+                  ),
+                  title: const Text('Tentang'),
+                  onTap: () {
+                    Navigator.pop(context); // Tutup drawer
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Duel Monster v1.0.0')),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
