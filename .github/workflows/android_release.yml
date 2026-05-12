@@ -3,15 +3,16 @@ name: Build and Release Android APK
 on:
   push:
     branches:
-      - main # Action berjalan otomatis setiap kali kamu push ke branch main
-  workflow_dispatch: # Mengizinkan kamu menjalankan action ini secara manual dari GitHub UI
+      - main
+  workflow_dispatch:
 
 jobs:
   build_and_release:
     name: Build & Release APK
     runs-on: ubuntu-latest
+
     permissions:
-      contents: write # Wajib ditambahkan agar GitHub Actions diizinkan membuat Release
+      contents: write
 
     steps:
       - name: Checkout Code
@@ -21,12 +22,23 @@ jobs:
         uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
-          java-version: '17' # Sangat disarankan Java 17 untuk versi Gradle terbaru
+          java-version: '17'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
+
+      - name: Create key.properties
+        run: |
+          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" > android/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
+          echo "storeFile=app/upload-keystore.jks" >> android/key.properties
 
       - name: Install Dependencies
         run: flutter pub get
@@ -34,11 +46,15 @@ jobs:
       - name: Build APK
         run: flutter build apk --release
 
+      - name: Rename APK
+        run: |
+          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/DuelMonster-v1.0.${{ github.run_number }}.apk
+
       - name: Upload Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: "v1.0.${{ github.run_number }}" # Otomatis buat versi baru
-          name: "Release v1.0.${{ github.run_number }}" # Nama release otomatis
-          files: build/app/outputs/flutter-apk/app-release.apk
+          tag_name: "v1.0.${{ github.run_number }}"
+          name: "Release v1.0.${{ github.run_number }}"
+          files: build/app/outputs/flutter-apk/DuelMonster-v1.0.${{ github.run_number }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

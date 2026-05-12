@@ -22,7 +22,15 @@
           }
         },
         {
-          "client_id": "49018571901-3tttcs4dk8f7lqvqpbp91a4cjcjp1ppe.apps.googleusercontent.com",
+          "client_id": "49018571901-ps2tf86cqj9siguht97ivnso40cp11bt.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.monster_battle_game",
+            "certificate_hash": "85d53c020fe2fd5e884baf36a0584e7454ecd708"
+          }
+        },
+        {
+          "client_id": "49018571901-tjvof9km9mu0trc3nhhecccsjchmoj2t.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
