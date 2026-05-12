@@ -43,8 +43,18 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
+      - name: Verify signing files
+        run: |
+          ls -lah android
+          ls -lah android/app
+          echo "key.properties exists:"
+          test -f android/key.properties && echo "YES"
+          echo "keystore exists:"
+          test -f android/app/upload-keystore.jks && echo "YES"
+
       - name: Build APK
-        run: flutter build apk --release
+        run: flutter build apk --release -v
+
 
       - name: Rename APK
         run: |
