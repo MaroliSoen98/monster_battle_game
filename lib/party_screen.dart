@@ -46,7 +46,19 @@ class _PartyScreenState extends State<PartyScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      drawer: const AppDrawer(),
+      drawer: AppDrawer(
+        party: widget.party,
+        onPartyUpdated: () {
+          setState(() {
+            if (_selectedMonster != null &&
+                !widget.party.contains(_selectedMonster)) {
+              _selectedMonster = widget.party.isNotEmpty
+                  ? widget.party.first
+                  : null;
+            }
+          });
+        },
+      ),
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {

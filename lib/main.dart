@@ -197,6 +197,35 @@ class SaveManager {
     return null;
   }
 
+  static Future<void> saveBox(List<Monster> box) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String encodedData = jsonEncode(box.map((m) => m.toJson()).toList());
+    await prefs.setString('saved_box', encodedData);
+
+    // --- CLOUD SAVE ---
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'box': box.map((m) => m.toJson()).toList(),
+          'lastUpdated': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Cloud save box error: $e');
+      }
+    }
+  }
+
+  static Future<List<Monster>> loadBox() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? encodedData = prefs.getString('saved_box');
+    if (encodedData != null) {
+      final List<dynamic> decodedData = jsonDecode(encodedData);
+      return decodedData.map((m) => Monster.fromJson(m)).toList();
+    }
+    return [];
+  }
+
   static Future<void> saveGold(int amount) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('player_gold', amount);
@@ -239,6 +268,37 @@ class SaveManager {
     }
   }
 
+  static Future<void> saveEncounteredMonster(String monsterName) async {
+    final prefs = await SharedPreferences.getInstance();
+    // Gunakan .toList() agar data yang dikembalikan bersifat mutable (bisa ditambah)
+    List<String> encountered =
+        prefs.getStringList('encountered_monsters')?.toList() ?? [];
+    if (!encountered.contains(monsterName)) {
+      encountered.add(monsterName);
+      await prefs.setStringList('encountered_monsters', encountered);
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({
+                'encountered_monsters': encountered,
+                'lastUpdated': FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
+        } catch (e) {
+          debugPrint('Cloud save encountered error: $e');
+        }
+      }
+    }
+  }
+
+  static Future<List<String>> loadEncounteredMonsters() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList('encountered_monsters') ?? [];
+  }
+
   static Future<void> saveTowerProgress(int level) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('infinite_tower_progress', level);
@@ -275,6 +335,10 @@ class SaveManager {
             cloudParty = partyData.map((m) => Monster.fromJson(m)).toList();
             await prefs.setString('saved_party', jsonEncode(partyData));
           }
+          if (data.containsKey('box')) {
+            final List<dynamic> boxData = data['box'];
+            await prefs.setString('saved_box', jsonEncode(boxData));
+          }
           if (data.containsKey('gold')) {
             await prefs.setInt('player_gold', data['gold']);
           }
@@ -288,6 +352,21 @@ class SaveManager {
             await prefs.setInt(
               'infinite_tower_progress',
               data['tower_progress'],
+            );
+          }
+          if (data.containsKey('wild_battles_left') &&
+              data.containsKey('last_quota_recovery_time')) {
+            await prefs.setInt('wild_battles_left', data['wild_battles_left']);
+            await prefs.setString(
+              'last_quota_recovery_time',
+              data['last_quota_recovery_time'],
+            );
+          }
+          if (data.containsKey('encountered_monsters')) {
+            final List<dynamic> encounteredData = data['encountered_monsters'];
+            await prefs.setStringList(
+              'encountered_monsters',
+              encounteredData.map((e) => e.toString()).toList(),
             );
           }
 
@@ -334,6 +413,199 @@ class MyApp extends StatelessWidget {
       // Gunakan AuthWrapper untuk mengecek status login Firebase
       home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+// ============================================================================
+// SHOP SCREEN
+// ============================================================================
+class ShopScreen extends StatefulWidget {
+  const ShopScreen({super.key});
+
+  @override
+  State<ShopScreen> createState() => _ShopScreenState();
+}
+
+class _ShopScreenState extends State<ShopScreen> {
+  int _currentGold = 0;
+  List<Map<String, dynamic>> _shopItems = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadShopData();
+  }
+
+  Future<void> _loadShopData() async {
+    _currentGold = await SaveManager.loadGold();
+    final prefs = await SharedPreferences.getInstance();
+
+    setState(() {
+      _shopItems = [
+        {
+          'name': 'Basic Ball',
+          'price': 100,
+          'quantity': prefs.getInt('basic_ball_qty') ?? 10,
+          'color': Colors.red,
+          'key': 'basic_ball_qty',
+        },
+        {
+          'name': 'Power Ball',
+          'price': 250,
+          'quantity': prefs.getInt('power_ball_qty') ?? 5,
+          'color': Colors.blue,
+          'key': 'power_ball_qty',
+        },
+        {
+          'name': 'Master Ball', // Mengubah Locked Ball menjadi Master Ball
+          'price': 350,
+          'quantity': prefs.getInt('locked_ball_qty') ?? 3,
+          'color': Colors.purple,
+          'key': 'locked_ball_qty',
+        },
+      ];
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _buyItem(int index) async {
+    final item = _shopItems[index];
+    if (_currentGold >= item['price']) {
+      setState(() {
+        _currentGold -= item['price'] as int;
+        item['quantity']++;
+      });
+      await SaveManager.saveGold(_currentGold);
+      await SaveManager.saveBalls(
+        _shopItems[0]['quantity'],
+        _shopItems[1]['quantity'],
+        _shopItems[2]['quantity'],
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Berhasil membeli ${item['name']}!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Gold tidak cukup!'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Shop')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Shop',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: Colors.black87,
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.monetization_on,
+                  color: Colors.amber.shade700,
+                  size: 30,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Gold: $_currentGold',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16.0),
+              itemCount: _shopItems.length,
+              itemBuilder: (context, index) {
+                final item = _shopItems[index];
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 8.0),
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.catching_pokemon,
+                          color: item['color'],
+                          size: 40,
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item['name'],
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                'Harga: ${item['price']} Gold',
+                                style: const TextStyle(color: Colors.grey),
+                              ),
+                              Text(
+                                'Dimiliki: ${item['quantity']}',
+                                style: const TextStyle(color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => _buyItem(index),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: item['color'],
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('Beli'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -602,7 +874,7 @@ class _MonsterSelectionScreenState extends State<MonsterSelectionScreen> {
       name: 'Apiroar',
       element: MonsterElement.Api,
       imagePath:
-          'assets/images/fire_monster.png', // Ganti dengan path gambar Anda
+          'assets/images/fire_monster_front.png', // Ganti dengan path gambar Anda
       level: 1,
       hp: 60,
       attack: 80,
@@ -635,13 +907,19 @@ class _MonsterSelectionScreenState extends State<MonsterSelectionScreen> {
           power: 0,
           cost: -15,
         ), // Recover
+        const MonsterMove(
+          name: 'Heal',
+          type: MoveType.recover,
+          power: 15,
+          cost: 0,
+        ),
       ],
     ),
     Monster(
       name: 'Aquadash',
       element: MonsterElement.Air,
       imagePath:
-          'assets/images/water_monster.png', // Ganti dengan path gambar Anda
+          'assets/images/water_monster_front.png', // Ganti dengan path gambar Anda
       level: 1,
       hp: 70,
       attack: 70,
@@ -674,13 +952,19 @@ class _MonsterSelectionScreenState extends State<MonsterSelectionScreen> {
           power: 0,
           cost: -15,
         ), // Recover
+        const MonsterMove(
+          name: 'Heal',
+          type: MoveType.recover,
+          power: 15,
+          cost: 0,
+        ),
       ],
     ),
     Monster(
       name: 'Gaiaroot',
       element: MonsterElement.Tumbuhan,
       imagePath:
-          'assets/images/plant_monster.png', // Ganti dengan path gambar Anda
+          'assets/images/plant_monster_front.png', // Ganti dengan path gambar Anda
       level: 1,
       hp: 85,
       attack: 60,
@@ -713,6 +997,12 @@ class _MonsterSelectionScreenState extends State<MonsterSelectionScreen> {
           power: 0,
           cost: -15,
         ), // Recover
+        const MonsterMove(
+          name: 'Heal',
+          type: MoveType.recover,
+          power: 15,
+          cost: 0,
+        ),
       ],
     ),
   ];
@@ -1154,7 +1444,10 @@ class MonsterCard extends StatelessWidget {
 // WIDGET DRAWER (HAMBURGER MENU - SUB MENU)
 // ============================================================================
 class AppDrawer extends StatelessWidget {
-  const AppDrawer({super.key});
+  final List<Monster>? party;
+  final VoidCallback? onPartyUpdated;
+
+  const AppDrawer({super.key, this.party, this.onPartyUpdated});
 
   @override
   Widget build(BuildContext context) {
@@ -1198,15 +1491,56 @@ class AppDrawer extends StatelessWidget {
               padding: EdgeInsets.zero,
               children: [
                 ListTile(
-                  leading: const Icon(Icons.person, color: Colors.blueAccent),
-                  title: const Text('Profil'),
+                  leading: const Icon(
+                    Icons.menu_book,
+                    color: Colors.blueAccent,
+                  ),
+                  title: const Text('Pokedex'),
                   onTap: () {
                     Navigator.pop(context); // Tutup drawer saat diklik
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Menu Profil belum tersedia'),
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const PokedexScreen(),
                       ),
                     );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.inventory_2,
+                    color: Colors.blueAccent,
+                  ),
+                  title: const Text('Monster Box'),
+                  onTap: () {
+                    Navigator.pop(context); // Tutup drawer saat diklik
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            MonsterBoxScreen(party: party ?? []),
+                      ),
+                    ).then((_) {
+                      if (onPartyUpdated != null) {
+                        onPartyUpdated!();
+                      }
+                    });
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.store, color: Colors.blueAccent),
+                  title: const Text('Shop'),
+                  onTap: () {
+                    Navigator.pop(context); // Tutup drawer saat diklik
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ShopScreen(),
+                      ),
+                    ).then((_) {
+                      // Refresh gold dan ball quantity setelah kembali dari shop
+                      if (onPartyUpdated != null) onPartyUpdated!();
+                    });
                   },
                 ),
                 ListTile(
@@ -1235,6 +1569,617 @@ class AppDrawer extends StatelessWidget {
                   },
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// POKEDEX SCREEN
+// ============================================================================
+class PokedexScreen extends StatefulWidget {
+  const PokedexScreen({super.key});
+
+  @override
+  State<PokedexScreen> createState() => _PokedexScreenState();
+}
+
+class _PokedexScreenState extends State<PokedexScreen> {
+  List<Map<String, dynamic>> _allMonsters = [];
+  List<String> _encountered = [];
+  List<String> _captured = [];
+  bool _isLoading = true;
+  final PageController _pageController = PageController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPokedexData();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadPokedexData() async {
+    // 1. Load captured
+    final party = await SaveManager.loadParty() ?? [];
+    final box = await SaveManager.loadBox();
+    _captured = party.map((m) => m.name.trim()).toList();
+    // Monster yang di dalam box tetap dihitung milik pemain
+    _captured.addAll(box.map((m) => m.name.trim()).toList());
+
+    // 2. Load encountered
+    _encountered = await SaveManager.loadEncounteredMonsters();
+
+    // Gabungkan pokemon yang dimiliki ke dalam daftar ditemui (encountered)
+    for (String capturedMonster in _captured) {
+      if (!_encountered.contains(capturedMonster)) {
+        _encountered.add(capturedMonster);
+      }
+    }
+
+    // 3. Load all from CSV
+    List<Map<String, dynamic>> loadedMonsters = [];
+    try {
+      final String fileData = await DefaultAssetBundle.of(
+        context,
+      ).loadString('assets/monsters.csv');
+      List<String> lines = fileData.split('\n');
+      if (lines.isNotEmpty && lines.first.toLowerCase().contains('nama')) {
+        lines.removeAt(0);
+      }
+      lines.removeWhere((line) => line.trim().isEmpty);
+
+      for (String line in lines) {
+        List<String> columns = line.split(RegExp(r'[,;]'));
+        if (columns.length >= 3) {
+          final name = columns[1].replaceAll('"', '').trim();
+          // Jangan masukkan ke daftar jika nama monster sudah ada (mencegah duplikat)
+          if (!loadedMonsters.any((m) => m['name'] == name)) {
+            loadedMonsters.add({
+              'name': name,
+              'element': _getElementFromString(
+                columns[2].replaceAll('"', '').trim(),
+              ),
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Gagal membaca monsters.csv: $e');
+    }
+
+    setState(() {
+      _allMonsters = loadedMonsters;
+      _isLoading = false;
+    });
+  }
+
+  MonsterElement _getElementFromString(String elementStr) {
+    if (elementStr == 'Api') return MonsterElement.Api;
+    if (elementStr == 'Air') return MonsterElement.Air;
+    if (elementStr == 'Listrik') return MonsterElement.Listrik;
+    if (elementStr == 'Tanah') return MonsterElement.Tanah;
+    if (elementStr == 'Terbang') return MonsterElement.Terbang;
+    return MonsterElement.Tumbuhan;
+  }
+
+  IconData _getElementIcon(MonsterElement element) {
+    switch (element) {
+      case MonsterElement.Api:
+        return Icons.local_fire_department;
+      case MonsterElement.Air:
+        return Icons.water_drop;
+      case MonsterElement.Tumbuhan:
+        return Icons.eco;
+      case MonsterElement.Listrik:
+        return Icons.bolt;
+      case MonsterElement.Tanah:
+        return Icons.terrain;
+      case MonsterElement.Terbang:
+        return Icons.flutter_dash;
+    }
+  }
+
+  Color _getElementColor(MonsterElement element) {
+    switch (element) {
+      case MonsterElement.Api:
+        return Colors.red.shade400;
+      case MonsterElement.Air:
+        return Colors.blue.shade400;
+      case MonsterElement.Tumbuhan:
+        return Colors.green.shade400;
+      case MonsterElement.Listrik:
+        return Colors.yellow.shade600;
+      case MonsterElement.Tanah:
+        return Colors.brown.shade500;
+      case MonsterElement.Terbang:
+        return Colors.lightBlue.shade100;
+    }
+  }
+
+  Widget _buildInfoChip(String label, int count, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.5)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            count.toString(),
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPokedexCard(
+    String name,
+    MonsterElement element,
+    bool isCaptured,
+    bool isEncountered,
+  ) {
+    Color cardColor;
+    Color iconColor;
+    String displayName;
+    Widget content;
+
+    if (isCaptured) {
+      cardColor = _getElementColor(element);
+      iconColor = Colors.white;
+      displayName = name;
+      content = Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(_getElementIcon(element), color: iconColor, size: 40),
+          const SizedBox(height: 8),
+          Text(
+            displayName,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      );
+    } else if (isEncountered) {
+      cardColor = Colors.grey.shade300;
+      iconColor = Colors.grey.shade500;
+      displayName = name;
+      content = Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(_getElementIcon(element), color: iconColor, size: 40),
+          const SizedBox(height: 8),
+          Text(
+            displayName,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.black54,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      );
+    } else {
+      cardColor = Colors.grey.shade200;
+      iconColor = Colors.grey.shade400;
+      displayName = '???';
+      content = Center(child: Icon(Icons.lock, color: iconColor, size: 40));
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [
+          BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(2, 2)),
+        ],
+      ),
+      child: Stack(
+        children: [
+          if (isCaptured || isEncountered)
+            Positioned(
+              right: -10,
+              bottom: -10,
+              child: Icon(
+                _getElementIcon(element),
+                size: 60,
+                color: isCaptured
+                    ? Colors.white.withOpacity(0.2)
+                    : Colors.white.withOpacity(0.5),
+              ),
+            ),
+          Center(child: content),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Pokedex')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    const int itemsPerPage = 9;
+    final int pageCount = (_allMonsters.length / itemsPerPage).ceil();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Pokedex',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: Colors.black87,
+      ),
+      body: _allMonsters.isEmpty
+          ? const Center(child: Text('Data Monster Kosong'))
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 8.0,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildInfoChip(
+                        'Dimiliki',
+                        _captured.toSet().length,
+                        Colors.green,
+                      ),
+                      _buildInfoChip(
+                        'Ditemui',
+                        _encountered.toSet().length,
+                        Colors.orange,
+                      ),
+                      _buildInfoChip('Total', _allMonsters.length, Colors.blue),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: PageView.builder(
+                    controller: _pageController,
+                    onPageChanged: (index) => setState(() {}),
+                    itemCount: pageCount,
+                    itemBuilder: (context, pageIndex) {
+                      final startIndex = pageIndex * itemsPerPage;
+                      final endIndex = math.min(
+                        startIndex + itemsPerPage,
+                        _allMonsters.length,
+                      );
+                      final pageItems = _allMonsters.sublist(
+                        startIndex,
+                        endIndex,
+                      );
+
+                      return GridView.builder(
+                        padding: const EdgeInsets.all(16.0),
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              childAspectRatio: 0.75,
+                              crossAxisSpacing: 12,
+                              mainAxisSpacing: 12,
+                            ),
+                        itemCount: pageItems.length,
+                        itemBuilder: (context, index) {
+                          final monster = pageItems[index];
+                          final String name = monster['name'];
+                          final MonsterElement element = monster['element'];
+
+                          final bool isCaptured = _captured.contains(name);
+                          final bool isEncountered = _encountered.contains(
+                            name,
+                          );
+
+                          return _buildPokedexCard(
+                            name,
+                            element,
+                            isCaptured,
+                            isEncountered,
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    'Halaman ${(_pageController.hasClients ? _pageController.page?.round() ?? 0 : 0) + 1} dari $pageCount\nGeser untuk melihat halaman lain',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+// ============================================================================
+// MONSTER BOX SCREEN
+// ============================================================================
+class MonsterBoxScreen extends StatefulWidget {
+  final List<Monster> party;
+
+  const MonsterBoxScreen({super.key, required this.party});
+
+  @override
+  State<MonsterBoxScreen> createState() => _MonsterBoxScreenState();
+}
+
+class _MonsterBoxScreenState extends State<MonsterBoxScreen> {
+  List<Monster> _box = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final box = await SaveManager.loadBox();
+    setState(() {
+      _box = box;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _moveToBox(int index) async {
+    if (widget.party.length <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Party harus menyisakan minimal 1 monster!'),
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _box.add(widget.party.removeAt(index));
+    });
+    await SaveManager.saveParty(widget.party);
+    await SaveManager.saveBox(_box);
+  }
+
+  Future<void> _moveToParty(int index) async {
+    if (widget.party.length >= 5) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Party sudah penuh (Maks 5)!')),
+      );
+      return;
+    }
+    setState(() {
+      widget.party.add(_box.removeAt(index));
+    });
+    await SaveManager.saveParty(widget.party);
+    await SaveManager.saveBox(_box);
+  }
+
+  IconData _getElementIcon(MonsterElement element) {
+    switch (element) {
+      case MonsterElement.Api:
+        return Icons.local_fire_department;
+      case MonsterElement.Air:
+        return Icons.water_drop;
+      case MonsterElement.Tumbuhan:
+        return Icons.eco;
+      case MonsterElement.Listrik:
+        return Icons.bolt;
+      case MonsterElement.Tanah:
+        return Icons.terrain;
+      case MonsterElement.Terbang:
+        return Icons.flutter_dash;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Monster Box')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Monster Box',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: Colors.black87,
+      ),
+      body: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            color: Colors.blue.shade50,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'My Party (${widget.party.length}/5) - Ketuk untuk simpan',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 110,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: widget.party.length,
+                    itemBuilder: (context, index) {
+                      final monster = widget.party[index];
+                      return GestureDetector(
+                        onTap: () => _moveToBox(index),
+                        child: Container(
+                          width: 85,
+                          margin: const EdgeInsets.only(right: 8),
+                          decoration: BoxDecoration(
+                            color: monster.elementColor,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white, width: 2),
+                            boxShadow: const [
+                              BoxShadow(color: Colors.black12, blurRadius: 4),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                _getElementIcon(monster.element),
+                                color: Colors.white,
+                              ),
+                              const SizedBox(height: 4),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4.0,
+                                ),
+                                child: Text(
+                                  monster.name,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ),
+                              Text(
+                                'Lv ${monster.level}',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'In Box (${_box.length}) - Ketuk untuk bawa',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: _box.isEmpty
+                        ? const Center(child: Text('Monster Box Kosong'))
+                        : GridView.builder(
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 4,
+                                  crossAxisSpacing: 8,
+                                  mainAxisSpacing: 8,
+                                  childAspectRatio: 0.8,
+                                ),
+                            itemCount: _box.length,
+                            itemBuilder: (context, index) {
+                              final monster = _box[index];
+                              return GestureDetector(
+                                onTap: () => _moveToParty(index),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: monster.elementColor.withOpacity(
+                                      0.8,
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Colors.black12,
+                                        blurRadius: 4,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        _getElementIcon(monster.element),
+                                        color: Colors.white,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 4.0,
+                                        ),
+                                        child: Text(
+                                          monster.name,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
+                                        ),
+                                      ),
+                                      Text(
+                                        'Lv ${monster.level}',
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

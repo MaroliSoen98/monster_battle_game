@@ -1,5 +1,107 @@
 part of 'battle_arena.dart';
 
+class AsymmetricDiagonalClipper extends CustomClipper<Path> {
+  final bool isTop;
+  final double progress; // 0.0 to 1.0 (morph progress)
+
+  AsymmetricDiagonalClipper({required this.isTop, required this.progress});
+
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    // Menggeser center sedikit ke bawah (5% offset) untuk memberikan porsi 55% area atas
+    double currentAvgY = size.height * 0.5 + (size.height * 0.05 * progress);
+    double currentDy =
+        size.width *
+        0.53 *
+        progress; // Miring lebih landai (sekitar 28 derajat)
+
+    double yLeft = currentAvgY - (currentDy / 2);
+    double yRight = currentAvgY + (currentDy / 2);
+
+    if (isTop) {
+      path.lineTo(size.width, 0);
+      path.lineTo(size.width, yRight);
+      path.lineTo(0, yLeft);
+      path.close();
+    } else {
+      path.moveTo(0, yLeft);
+      path.lineTo(size.width, yRight);
+      path.lineTo(size.width, size.height);
+      path.lineTo(0, size.height);
+      path.close();
+    }
+    return path;
+  }
+
+  @override
+  bool shouldReclip(AsymmetricDiagonalClipper oldClipper) =>
+      oldClipper.progress != progress || oldClipper.isTop != isTop;
+}
+
+// WIDGET KUSTOM: Progress Bar yang dijamin 100% mulus anti loncat
+// Secara otomatis melanjutkan animasi dari sisa persen sebelumnya
+class SmoothProgressBar extends ImplicitlyAnimatedWidget {
+  final double value;
+  final Color backgroundColor;
+  final Color baseColor;
+  final double minHeight;
+  final bool isHealthBar;
+
+  const SmoothProgressBar({
+    super.key,
+    required this.value,
+    required this.backgroundColor,
+    required this.baseColor,
+    required this.minHeight,
+    this.isHealthBar = false,
+    super.duration = const Duration(milliseconds: 800),
+    super.curve = Curves.easeOutCubic,
+  });
+
+  @override
+  ImplicitlyAnimatedWidgetState<SmoothProgressBar> createState() =>
+      _SmoothProgressBarState();
+}
+
+class _SmoothProgressBarState
+    extends AnimatedWidgetBaseState<SmoothProgressBar> {
+  Tween<double>? _valueTween;
+
+  @override
+  void forEachTween(TweenVisitor<dynamic> visitor) {
+    _valueTween =
+        visitor(
+              _valueTween,
+              widget.value,
+              (dynamic value) => Tween<double>(begin: value as double),
+            )
+            as Tween<double>?;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    double animatedValue = _valueTween?.evaluate(animation) ?? widget.value;
+
+    Color progressColor = widget.baseColor;
+    if (widget.isHealthBar) {
+      progressColor = animatedValue > 0.5
+          ? Colors.greenAccent
+          : (animatedValue > 0.2 ? Colors.orangeAccent : Colors.redAccent);
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(widget.minHeight / 2),
+      child: LinearProgressIndicator(
+        value: animatedValue,
+        backgroundColor: widget.backgroundColor,
+        color: progressColor,
+        minHeight: widget.minHeight,
+      ),
+    );
+  }
+}
+
 /// Mixin berisi semua fungsi bantuan UI dan logika elemen dasar yang di-share
 /// ke WildBattleArena, PvPBattleArena, dan InfiniteTowerBattleArena
 mixin BattleSharedMixin<T extends StatefulWidget> on State<T> {
@@ -136,31 +238,31 @@ mixin BattleSharedMixin<T extends StatefulWidget> on State<T> {
               'HP',
               oldHp,
               monster.hp,
-              totalIncreases['HP']!,
+              increase: totalIncreases['HP']!,
             ),
             _buildStatIncreaseRow(
               'Attack',
               oldAttack,
               monster.attack,
-              totalIncreases['Attack']!,
+              increase: totalIncreases['Attack']!,
             ),
             _buildStatIncreaseRow(
               'Defense',
               oldDefense,
               monster.defense,
-              totalIncreases['Defense']!,
+              increase: totalIncreases['Defense']!,
             ),
             _buildStatIncreaseRow(
               'Speed',
               oldSpeed,
               monster.speed,
-              totalIncreases['Speed']!,
+              increase: totalIncreases['Speed']!,
             ),
             _buildStatIncreaseRow(
               'Stamina',
               oldStamina,
               monster.stamina,
-              totalIncreases['Stamina']!,
+              increase: totalIncreases['Stamina']!,
             ),
           ],
         ),
@@ -168,11 +270,7 @@ mixin BattleSharedMixin<T extends StatefulWidget> on State<T> {
           Center(
             child: ElevatedButton(
               onPressed: () {
-                Future.delayed(const Duration(milliseconds: 1500), () {
-                  if (mounted) {
-                    Navigator.pop(context);
-                  }
-                });
+                Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.amber,
@@ -194,9 +292,9 @@ mixin BattleSharedMixin<T extends StatefulWidget> on State<T> {
   Widget _buildStatIncreaseRow(
     String label,
     num oldValue,
-    num newValue,
-    num increase,
-  ) {
+    num newValue, {
+    num? increase,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
@@ -225,18 +323,19 @@ mixin BattleSharedMixin<T extends StatefulWidget> on State<T> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    AnimatedOpacity(
-                      opacity: value < newValue.toDouble() ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 300),
-                      child: Text(
-                        '(+${increase.toInt()})',
-                        style: const TextStyle(
-                          color: Colors.green,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                    if (increase != null)
+                      AnimatedOpacity(
+                        opacity: value < newValue.toDouble() ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 300),
+                        child: Text(
+                          '(+${increase.toInt()})',
+                          style: const TextStyle(
+                            color: Colors.green,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 );
               },
@@ -284,7 +383,8 @@ mixin BattleSharedMixin<T extends StatefulWidget> on State<T> {
           Icon(icon, color: Colors.white, size: 14),
           const SizedBox(width: 6),
           Text(
-            '$currentTurnsLeft Turn(s) $name',
+            // Simplified text
+            '$name: $currentTurnsLeft turn${currentTurnsLeft > 1 ? 's' : ''}',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 10,
@@ -293,6 +393,235 @@ mixin BattleSharedMixin<T extends StatefulWidget> on State<T> {
           ),
         ],
       ),
+    );
+  }
+
+  String _getImagePath(MonsterElement element, bool isEnemy) {
+    final suffix = isEnemy ? '_front.png' : '_back.png';
+    switch (element) {
+      case MonsterElement.Api:
+        return 'assets/images/fire_monster$suffix';
+      case MonsterElement.Air:
+        return 'assets/images/water_monster$suffix';
+      case MonsterElement.Tumbuhan:
+        return 'assets/images/plant_monster$suffix';
+      case MonsterElement.Listrik:
+        return 'assets/images/electric_monster$suffix';
+      case MonsterElement.Tanah:
+        return 'assets/images/ground_monster$suffix';
+      case MonsterElement.Terbang:
+        return 'assets/images/flying_monster$suffix';
+    }
+  }
+
+  Widget _buildMonsterSpriteCore({
+    required MonsterElement element,
+    required bool isEnemy,
+    required AnimationController shakeController,
+  }) {
+    return _buildShakeAnimator(
+      controller: shakeController,
+      // Menggunakan SizedBox berukuran tetap agar gambar yang di-crop
+      // tidak mengubah ukuran layout keseluruhan dan bayangan tidak lari ke tengah!
+      child: SizedBox(
+        width: 220,
+        height: 280,
+        child: Stack(
+          alignment: Alignment.bottomCenter,
+          clipBehavior: Clip.none,
+          children: [
+            // Platform / Bayangan
+            Positioned(
+              bottom: 0,
+              child: Container(
+                width: 200,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.5),
+                  borderRadius: const BorderRadius.all(
+                    Radius.elliptical(200, 28),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 10,
+                      spreadRadius: 4,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Monster Image
+            Positioned(
+              bottom:
+                  14, // Angkat 14px agar telapak kaki persis menapak di tengah bayangan oval (28 / 2 = 14)
+              child: SizedBox(
+                width: 300, // Ruang horizontal lega
+                height: 280,
+                child: Image.asset(
+                  _getImagePath(element, isEnemy),
+                  fit: BoxFit.contain,
+                  alignment: Alignment
+                      .bottomCenter, // Memaksa gambar selalu nempel ke batas bawah Positioned
+                  errorBuilder: (context, error, stackTrace) => Icon(
+                    _getElementIcon(element),
+                    size: 150,
+                    color: _getElementColor(element),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFuturisticHUDCore({
+    required String name,
+    required int level,
+    required MonsterElement element,
+    required int currentHp,
+    required int maxHp,
+    required int currentStamina,
+    required int maxStamina,
+    required bool isEnemy,
+    required int oldHp,
+    required List<Widget> statusEffects,
+  }) {
+    Color elementColor = _getElementColor(element);
+    double newHpPercent = max(0, currentHp / maxHp);
+    double newStaminaPercent = maxStamina > 0
+        ? currentStamina / maxStamina
+        : 0.0;
+
+    return Column(
+      key: ValueKey('${name}_$maxHp'),
+      crossAxisAlignment: isEnemy
+          ? CrossAxisAlignment.start
+          : CrossAxisAlignment.end,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          width: 180,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A24).withOpacity(0.85),
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(16),
+              topRight: const Radius.circular(16),
+              bottomLeft: Radius.circular(isEnemy ? 16 : 4),
+              bottomRight: Radius.circular(isEnemy ? 4 : 16),
+            ),
+            border: Border.all(color: elementColor.withOpacity(0.7), width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: elementColor.withOpacity(0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Icon(
+                          _getElementIcon(element),
+                          size: 14,
+                          color: elementColor,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    'Lv$level',
+                    style: const TextStyle(
+                      color: Colors.amber,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // 👇 INI ADALAH BAGIAN YANG MENGATUR ANIMASI HEALTH BAR 👇
+              SmoothProgressBar(
+                value: newHpPercent,
+                backgroundColor: Colors.grey.shade800,
+                baseColor: Colors.greenAccent,
+                minHeight: 8,
+                isHealthBar: true,
+              ),
+              // 👆 =================================================== 👆
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  '$currentHp / $maxHp HP',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const Divider(height: 10, color: Colors.white24),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.battery_charging_full,
+                    size: 12,
+                    color: Colors.cyanAccent,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    // Bar SP/Stamina dengan logika animasi serupa
+                    child: SmoothProgressBar(
+                      value: newStaminaPercent,
+                      backgroundColor: Colors.grey.shade800,
+                      baseColor: Colors.cyan,
+                      minHeight: 4,
+                      isHealthBar: false,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '$currentStamina SP',
+                    style: const TextStyle(
+                      color: Colors.cyanAccent,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        if (statusEffects.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: Wrap(spacing: 6, runSpacing: 6, children: statusEffects),
+          ),
+      ],
     );
   }
 }
@@ -676,12 +1005,19 @@ class _WildBattleArenaState extends State<WildBattleArena>
           'Blaze Bind',
         ];
         generatedMoves = [
-          MonsterMove(
-            name: randomRecover,
+          const MonsterMove(
+            name: 'Focus',
             type: MoveType.recover,
             power: 0,
             cost: -15,
           ),
+          if (random.nextInt(3) == 0) // Peluang 33% untuk punya Heal
+            const MonsterMove(
+              name: 'Heal',
+              type: MoveType.recover,
+              power: 15,
+              cost: 0,
+            ),
           MonsterMove(
             name: randomNormal,
             type: MoveType.normal,
@@ -736,12 +1072,19 @@ class _WildBattleArenaState extends State<WildBattleArena>
           'Tsunami Hold',
         ];
         generatedMoves = [
-          MonsterMove(
-            name: randomRecover,
+          const MonsterMove(
+            name: 'Focus',
             type: MoveType.recover,
             power: 0,
             cost: -15,
           ),
+          if (random.nextInt(3) == 0) // Peluang 33% untuk punya Heal
+            const MonsterMove(
+              name: 'Heal',
+              type: MoveType.recover,
+              power: 15,
+              cost: 0,
+            ),
           MonsterMove(
             name: randomNormal,
             type: MoveType.normal,
@@ -796,12 +1139,19 @@ class _WildBattleArenaState extends State<WildBattleArena>
           'Life Siphon',
         ];
         generatedMoves = [
-          MonsterMove(
-            name: randomRecover,
+          const MonsterMove(
+            name: 'Focus',
             type: MoveType.recover,
             power: 0,
             cost: -15,
           ),
+          if (random.nextInt(3) == 0) // Peluang 33% untuk punya Heal
+            const MonsterMove(
+              name: 'Heal',
+              type: MoveType.recover,
+              power: 15,
+              cost: 0,
+            ),
           MonsterMove(
             name: randomNormal,
             type: MoveType.normal,
@@ -856,12 +1206,19 @@ class _WildBattleArenaState extends State<WildBattleArena>
           'Shock Trap',
         ];
         generatedMoves = [
-          MonsterMove(
-            name: randomRecover,
+          const MonsterMove(
+            name: 'Focus',
             type: MoveType.recover,
             power: 0,
             cost: -15,
           ),
+          if (random.nextInt(3) == 0) // Peluang 33% untuk punya Heal
+            const MonsterMove(
+              name: 'Heal',
+              type: MoveType.recover,
+              power: 15,
+              cost: 0,
+            ),
           MonsterMove(
             name: randomNormal,
             type: MoveType.normal,
@@ -916,12 +1273,19 @@ class _WildBattleArenaState extends State<WildBattleArena>
           'Earth Shield',
         ];
         generatedMoves = [
-          MonsterMove(
-            name: randomRecover,
+          const MonsterMove(
+            name: 'Focus',
             type: MoveType.recover,
             power: 0,
             cost: -15,
           ),
+          if (random.nextInt(3) == 0) // Peluang 33% untuk punya Heal
+            const MonsterMove(
+              name: 'Heal',
+              type: MoveType.recover,
+              power: 15,
+              cost: 0,
+            ),
           MonsterMove(
             name: randomNormal,
             type: MoveType.normal,
@@ -976,12 +1340,19 @@ class _WildBattleArenaState extends State<WildBattleArena>
           'High Hover',
         ];
         generatedMoves = [
-          MonsterMove(
-            name: randomRecover,
+          const MonsterMove(
+            name: 'Focus',
             type: MoveType.recover,
             power: 0,
             cost: -15,
           ),
+          if (random.nextInt(3) == 0) // Peluang 33% untuk punya Heal
+            const MonsterMove(
+              name: 'Heal',
+              type: MoveType.recover,
+              power: 15,
+              cost: 0,
+            ),
           MonsterMove(
             name: randomNormal,
             type: MoveType.normal,
@@ -1032,15 +1403,8 @@ class _WildBattleArenaState extends State<WildBattleArena>
     final moves = _activeMonster.moves;
     _currentCards.clear();
 
-    final normalMoves = moves.where((m) => m.type == MoveType.normal).toList();
-    final elementalMoves = moves
-        .where((m) => m.type == MoveType.elemental)
-        .toList();
     final specialMoves = moves
         .where((m) => m.type == MoveType.special)
-        .toList();
-    final recoverMoves = moves
-        .where((m) => m.type == MoveType.recover)
         .toList();
 
     // Cek apakah kartu spesial bisa ditarik (cooldown 15 turn)
@@ -1049,20 +1413,15 @@ class _WildBattleArenaState extends State<WildBattleArena>
       _lastSpecialCardTurn = _turnCount; // Reset cooldown
     }
 
-    // Isi sisa tangan dengan kartu non-spesial
-    List<MonsterMove> fillPool = [];
-    if (normalMoves.isNotEmpty) fillPool.addAll(normalMoves);
-    if (elementalMoves.isNotEmpty) fillPool.addAll(elementalMoves);
-    if (recoverMoves.isNotEmpty) fillPool.addAll(recoverMoves);
-    fillPool.shuffle();
+    // Buat "dek" dari semua kartu non-spesial yang belum ada di tangan
+    List<MonsterMove> deck = moves
+        .where((m) => m.type != MoveType.special && !_currentCards.contains(m))
+        .toList();
+    deck.shuffle();
 
-    while (_currentCards.length < 3 && moves.isNotEmpty) {
-      // Add a move that is not already in the hand
-      var availableMoves = moves
-          .where((m) => !_currentCards.contains(m))
-          .toList();
-      if (availableMoves.isEmpty) break; // No more unique moves to add
-      _currentCards.add(availableMoves[random.nextInt(availableMoves.length)]);
+    // Isi sisa tangan dari "dek"
+    while (_currentCards.length < 3 && deck.isNotEmpty) {
+      _currentCards.add(deck.removeAt(0));
     }
 
     // Acak posisi kartu di tangan
@@ -1254,15 +1613,25 @@ class _WildBattleArenaState extends State<WildBattleArena>
 
     // Handle kartu recover
     if (move.type == MoveType.recover) {
-      setState(() {
-        _playerStamina = min(
-          _activeMonster.stamina,
-          _playerStamina - move.cost,
-        );
-        _syncPartyStats();
-        _battleLog = "Fokus & pulihkan ${-move.cost} SP!";
-        _isPlayerTurn = false;
-      });
+      if (move.name == 'Heal') {
+        setState(() {
+          _oldPlayerHp = _playerHp;
+          _playerHp = min(_activeMonster.hp, _playerHp + 15);
+          _syncPartyStats();
+          _battleLog = "${_activeMonster.name} memulihkan 15 HP!";
+          _isPlayerTurn = false;
+        });
+      } else {
+        setState(() {
+          _playerStamina = min(
+            _activeMonster.stamina,
+            _playerStamina - move.cost,
+          );
+          _syncPartyStats();
+          _battleLog = "Fokus & pulihkan ${-move.cost} SP!";
+          _isPlayerTurn = false;
+        });
+      }
       _enemyTurn(); // Langsung ke giliran musuh
       return;
     }
@@ -1407,11 +1776,20 @@ class _WildBattleArenaState extends State<WildBattleArena>
                 score = 0.5; // Base score for attacking
                 break;
               case MoveType.recover:
-                // Recover is only valuable when stamina is low
-                if (_enemyStamina < _enemyMonster.stamina * 0.4) {
-                  score = 2.5; // High score to force recovery
+                if (move.name == 'Heal') {
+                  // Heal is valuable when HP is low
+                  if (_enemyHp < _enemyMonster.hp * 0.5) {
+                    score = 3.0; // Very high score to force healing
+                  } else {
+                    score = -1.0; // Avoid healing with high HP
+                  }
                 } else {
-                  score = -1.0; // Avoid recovering with high stamina
+                  // Recover is only valuable when stamina is low
+                  if (_enemyStamina < _enemyMonster.stamina * 0.4) {
+                    score = 2.5; // High score to force recovery
+                  } else {
+                    score = -1.0; // Avoid recovering with high stamina
+                  }
                 }
                 break;
             }
@@ -1449,8 +1827,14 @@ class _WildBattleArenaState extends State<WildBattleArena>
           );
 
           if (chosenMove.type == MoveType.recover) {
-            _battleLog =
-                "$statusLog${_enemyMonster.name} pulihkan ${-chosenMove.cost} SP!";
+            if (chosenMove.name == 'Heal') {
+              _oldEnemyHp = _enemyHp;
+              _enemyHp = min(_enemyMonster.hp, _enemyHp + 15);
+              _battleLog = "$statusLog${_enemyMonster.name} memulihkan 15 HP!";
+            } else {
+              _battleLog =
+                  "$statusLog${_enemyMonster.name} pulihkan ${-chosenMove.cost} SP!";
+            }
           } else {
             // Attack move
             final damageResult = _calculateDamage(
@@ -1540,6 +1924,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
 
   void _showEndGameDialog(bool won, {bool isCaptured = false}) {
     widget.onBattleEnd(won);
+
+    // Simpan monster liar ini ke Pokedex (Encountered) setelah battle selesai
+    SaveManager.saveEncounteredMonster(_enemyMonster.name.trim());
 
     final random = Random();
     int gold = won ? 10 + random.nextInt(20) : 0;
@@ -1714,6 +2101,94 @@ class _WildBattleArenaState extends State<WildBattleArena>
     );
   }
 
+  List<Widget> _buildStatusList({required bool isEnemy}) {
+    List<Widget> list = [];
+    if (isEnemy) {
+      if (_enemyBurnTurns > 0)
+        list.add(
+          _buildStatusEffectIndicator(
+            'Burn',
+            _enemyBurnTurns,
+            3,
+            Icons.local_fire_department,
+            Colors.orange,
+          ),
+        );
+      if (_enemyBindTurns > 0)
+        list.add(
+          _buildStatusEffectIndicator(
+            'Bind',
+            _enemyBindTurns,
+            1,
+            Icons.link_off,
+            Colors.blue,
+          ),
+        );
+      if (_enemyInvulnerableTurns > 0)
+        list.add(
+          _buildStatusEffectIndicator(
+            'Miss',
+            _enemyInvulnerableTurns,
+            2,
+            Icons.visibility_off,
+            Colors.grey,
+          ),
+        );
+      if (_enemyParalysisTurns > 0)
+        list.add(
+          _buildStatusEffectIndicator(
+            'Paralysis',
+            _enemyParalysisTurns,
+            1,
+            Icons.bolt,
+            Colors.amber,
+          ),
+        );
+    } else {
+      if (_playerBurnTurns > 0)
+        list.add(
+          _buildStatusEffectIndicator(
+            'Burn',
+            _playerBurnTurns,
+            3,
+            Icons.local_fire_department,
+            Colors.orange,
+          ),
+        );
+      if (_playerBindTurns > 0)
+        list.add(
+          _buildStatusEffectIndicator(
+            'Bind',
+            _playerBindTurns,
+            1,
+            Icons.link_off,
+            Colors.blue,
+          ),
+        );
+      if (_playerInvulnerableTurns > 0)
+        list.add(
+          _buildStatusEffectIndicator(
+            'Miss',
+            _playerInvulnerableTurns,
+            2,
+            Icons.visibility_off,
+            Colors.grey,
+          ),
+        );
+      if (_playerParalysisTurns > 0)
+        list.add(
+          _buildStatusEffectIndicator(
+            'Paralysis',
+            _playerParalysisTurns,
+            1,
+            Icons.bolt,
+            Colors.amber,
+          ),
+        );
+    }
+    return list;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -1765,12 +2240,19 @@ class _WildBattleArenaState extends State<WildBattleArena>
                               ((linearValue - 0.50) / 0.50).clamp(0.0, 1.0),
                             );
 
-                            // Hitung rotasi dan panjang garis berdasarkan progres morphing
-                            final dy = boxSize.height * morphProgress;
-                            final dx = boxSize.width;
-                            final lineAngle = atan2(dy, dx);
-                            // Kalikan 2.5 agar garis sangat panjang dan pasti membelah hingga ujung layar
-                            final lineWidth = sqrt(dx * dx + dy * dy) * 2.5;
+                            final currentAvgYOffset =
+                                boxSize.height * 0.05 * morphProgress;
+                            final currentDy =
+                                boxSize.width *
+                                0.53 *
+                                morphProgress; // Miring lebih landai
+                            final lineAngle = atan2(currentDy, boxSize.width);
+                            final lineWidth =
+                                sqrt(
+                                  boxSize.width * boxSize.width +
+                                      currentDy * currentDy,
+                                ) *
+                                1.5;
 
                             final slideYTop =
                                 -(boxSize.height / 2) * (1 - slideProgress);
@@ -1785,7 +2267,10 @@ class _WildBattleArenaState extends State<WildBattleArena>
                                 Transform.translate(
                                   offset: Offset(0, slideYTop),
                                   child: ClipPath(
-                                    clipper: DynamicTopClipper(morphProgress),
+                                    clipper: AsymmetricDiagonalClipper(
+                                      isTop: true,
+                                      progress: morphProgress,
+                                    ),
                                     child: Container(
                                       color: _enemyMonster.elementColor,
                                       child: Stack(
@@ -1812,8 +2297,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
                                 Transform.translate(
                                   offset: Offset(0, slideYBottom),
                                   child: ClipPath(
-                                    clipper: DynamicBottomClipper(
-                                      morphProgress,
+                                    clipper: AsymmetricDiagonalClipper(
+                                      isTop: false,
+                                      progress: morphProgress,
                                     ),
                                     child: Container(
                                       color: _activeMonster.elementColor,
@@ -1840,26 +2326,37 @@ class _WildBattleArenaState extends State<WildBattleArena>
                                 // Garis Putih (Clash Line)
                                 if (lineProgress > 0)
                                   Center(
-                                    child: OverflowBox(
-                                      maxWidth: double.infinity,
-                                      maxHeight: double.infinity,
-                                      child: Transform.rotate(
-                                        angle: lineAngle,
-                                        child: Container(
-                                          height:
-                                              4, // Tetap tipis, tidak ikut melebar
-                                          width: lineWidth * lineProgress,
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.white.withOpacity(
-                                                  0.8,
-                                                ),
-                                                blurRadius: 15,
-                                                spreadRadius: 2,
+                                    child: Transform.translate(
+                                      offset: Offset(0, currentAvgYOffset),
+                                      child: OverflowBox(
+                                        maxWidth: double.infinity,
+                                        maxHeight: double.infinity,
+                                        child: Transform.rotate(
+                                          angle: lineAngle,
+                                          child: Container(
+                                            height: 12,
+                                            width: lineWidth * lineProgress,
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              border: Border.all(
+                                                color: Colors.black54,
+                                                width: 2.0,
                                               ),
-                                            ],
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.white
+                                                      .withOpacity(0.9),
+                                                  blurRadius: 15,
+                                                  spreadRadius: 4,
+                                                ),
+                                                BoxShadow(
+                                                  color: Colors.black
+                                                      .withOpacity(0.5),
+                                                  blurRadius: 10,
+                                                  offset: const Offset(0, 5),
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -1873,24 +2370,70 @@ class _WildBattleArenaState extends State<WildBattleArena>
                     ),
                   ),
 
-                  // Tombol Back
+                  // --- MONSTER MUSUH (TOP RIGHT) ---
+                  Positioned(
+                    top: -50,
+                    right: 0,
+                    child: _buildMonsterSpriteCore(
+                      element: _enemyMonster.element,
+                      isEnemy: true,
+                      shakeController: _enemyShakeController,
+                    ),
+                  ),
+                  // --- MONSTER PEMAIN (BOTTOM LEFT) ---
+                  Positioned(
+                    bottom: 20,
+                    left: 10,
+                    child: _buildMonsterSpriteCore(
+                      element: _activeMonster.element,
+                      isEnemy: false,
+                      shakeController: _playerShakeController,
+                    ),
+                  ),
+                  // --- HUD MUSUH (TOP LEFT) ---
                   Positioned(
                     top: 16,
                     left: 16,
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.arrow_back_ios_new,
-                        color: Colors.white,
-                      ),
-                      onPressed: () => Navigator.pop(context),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildFuturisticHUDCore(
+                          name: _enemyMonster.name,
+                          level: _enemyMonster.level,
+                          element: _enemyMonster.element,
+                          currentHp: _enemyHp,
+                          maxHp: _enemyMonster.hp,
+                          currentStamina: _enemyStamina,
+                          maxStamina: _enemyMonster.stamina,
+                          isEnemy: true,
+                          oldHp: _oldEnemyHp,
+                          statusEffects: _buildStatusList(isEnemy: true),
+                        ),
+                      ],
                     ),
                   ),
-
+                  // --- HUD PEMAIN (BOTTOM RIGHT) ---
+                  Positioned(
+                    bottom: 12,
+                    right: 12,
+                    child: _buildFuturisticHUDCore(
+                      name: _activeMonster.name,
+                      level: _activeMonster.level,
+                      element: _activeMonster.element,
+                      currentHp: _playerHp,
+                      maxHp: _activeMonster.hp,
+                      currentStamina: _playerStamina,
+                      maxStamina: _activeMonster.stamina,
+                      isEnemy: false,
+                      oldHp: _oldPlayerHp,
+                      statusEffects: _buildStatusList(isEnemy: false),
+                    ),
+                  ),
                   // Animasi Damage Musuh
                   if (_enemyDamageValue > 0)
                     Positioned(
-                      top: MediaQuery.of(context).size.height * 0.3,
-                      right: MediaQuery.of(context).size.width * 0.2,
+                      top: size.height * 0.15,
+                      right: size.width * 0.25,
                       child: TweenAnimationBuilder<double>(
                         tween: Tween<double>(begin: 0.0, end: 1.0),
                         duration: const Duration(milliseconds: 800),
@@ -1906,12 +2449,11 @@ class _WildBattleArenaState extends State<WildBattleArena>
                         },
                       ),
                     ),
-
                   // Animasi Damage Pemain
                   if (_playerDamageValue > 0)
                     Positioned(
-                      bottom: MediaQuery.of(context).size.height * 0.3,
-                      left: MediaQuery.of(context).size.width * 0.2,
+                      bottom: size.height * 0.15,
+                      left: size.width * 0.25,
                       child: TweenAnimationBuilder<double>(
                         tween: Tween<double>(begin: 0.0, end: 1.0),
                         duration: const Duration(milliseconds: 800),
@@ -1927,22 +2469,6 @@ class _WildBattleArenaState extends State<WildBattleArena>
                         },
                       ),
                     ),
-
-                  // --- MUSUH (TOP RIGHT) ---
-                  _buildArenaSide(
-                    isEnemy: true,
-                    monster: _enemyMonster,
-                    currentHp: _enemyHp,
-                    currentStamina: _enemyStamina,
-                  ),
-
-                  // --- PEMAIN (BOTTOM LEFT) ---
-                  _buildArenaSide(
-                    isEnemy: false,
-                    monster: _activeMonster,
-                    currentHp: _playerHp,
-                    currentStamina: _playerStamina,
-                  ),
                 ],
               ),
             ),
@@ -2336,14 +2862,10 @@ class _WildBattleArenaState extends State<WildBattleArena>
     int currentStamina, {
     required bool isEnemy,
   }) {
-    double hpPercent = currentHp / maxHp;
-
-    // Ambil nilai HP lama untuk animasi
-    int oldHp = isEnemy ? _oldEnemyHp : _oldPlayerHp;
-    double oldHpPercent = max(0, oldHp / maxHp);
     double newHpPercent = max(0, currentHp / maxHp);
 
     return Container(
+      key: ValueKey('${monster.name}_$maxHp'),
       padding: const EdgeInsets.all(12),
       width: 200,
       decoration: BoxDecoration(
@@ -2386,8 +2908,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
           const SizedBox(height: 8),
           // Bar HP dengan animasi
           TweenAnimationBuilder<double>(
-            tween: Tween<double>(begin: oldHpPercent, end: newHpPercent),
+            tween: Tween<double>(begin: 0.0, end: newHpPercent),
             duration: const Duration(milliseconds: 800),
+            curve: Curves.easeOutCubic,
             builder: (context, animatedValue, child) {
               Color hpColor = animatedValue > 0.5
                   ? Colors.green
@@ -2420,6 +2943,30 @@ class _WildBattleArenaState extends State<WildBattleArena>
                 color: Colors.teal,
               ),
               const SizedBox(width: 4),
+              Expanded(
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween<double>(
+                    begin: 0.0,
+                    end: monster.stamina > 0
+                        ? currentStamina / monster.stamina
+                        : 0.0,
+                  ),
+                  duration: const Duration(milliseconds: 800),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, animatedValue, child) {
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: animatedValue,
+                        backgroundColor: Colors.grey.shade300,
+                        color: Colors.teal,
+                        minHeight: 6,
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
               Text(
                 '$currentStamina / ${monster.stamina} SP',
                 style: const TextStyle(
@@ -2447,7 +2994,11 @@ class _WildBattleArenaState extends State<WildBattleArena>
       icon = Icons.auto_awesome;
     } else if (move.type == MoveType.recover) {
       bgColor = Colors.teal.shade300;
-      icon = Icons.healing;
+      if (move.name == 'Heal') {
+        icon = Icons.add;
+      } else {
+        icon = Icons.healing;
+      }
     }
 
     String typeLabel = move.type == MoveType.elemental
@@ -2501,7 +3052,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    move.cost > 0 ? '${move.cost}' : '+${-move.cost}',
+                    move.name == 'Heal'
+                        ? '+15'
+                        : (move.cost > 0 ? '${move.cost}' : '+${-move.cost}'),
                     style: TextStyle(
                       color: textColor,
                       fontSize: 22, // Ukuran font lebih besar
@@ -2959,17 +3512,15 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
       _lastSpecialCardTurn = _localTurnCount;
     }
 
-    List<MonsterMove> fillPool = moves
-        .where((m) => m.type != MoveType.special)
+    // Buat "dek" dari semua kartu non-spesial yang belum ada di tangan
+    List<MonsterMove> deck = moves
+        .where((m) => m.type != MoveType.special && !_currentCards.contains(m))
         .toList();
-    fillPool.shuffle();
+    deck.shuffle();
 
-    while (_currentCards.length < 3 && moves.isNotEmpty) {
-      var availableMoves = moves
-          .where((m) => !_currentCards.contains(m))
-          .toList();
-      if (availableMoves.isEmpty) break;
-      _currentCards.add(availableMoves[random.nextInt(availableMoves.length)]);
+    // Isi sisa tangan dari "dek"
+    while (_currentCards.length < 3 && deck.isNotEmpty) {
+      _currentCards.add(deck.removeAt(0));
     }
     _currentCards.shuffle();
   }
@@ -3166,6 +3717,14 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     );
 
     if (move.type == MoveType.recover) {
+      String logMessage;
+      if (move.name == 'Heal') {
+        myHp = min((myData['maxHp'] as num).toInt(), myHp + 15);
+        logMessage = "$statusLog${myData['name']} memulihkan 15 HP!";
+      } else {
+        logMessage = "$statusLog${myData['name']} pulihkan ${-move.cost} SP!";
+      }
+
       await _firestore.collection('rooms').doc(widget.roomCode).update({
         '$myRole.hp': myHp,
         '$myRole.stamina': myStamina,
@@ -3174,7 +3733,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
         '$myRole.invulnerableTurns': myInvulnerable,
         'currentTurn': enemyRole,
         'turnCount': FieldValue.increment(1),
-        'log': "$statusLog${myData['name']} pulihkan ${-move.cost} SP!",
+        'log': logMessage,
       });
       _isProcessingTurn = false;
       return;
@@ -3385,6 +3944,55 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     );
   }
 
+  List<Widget> _buildStatusListPvP(Map<String, dynamic> data) {
+    List<Widget> list = [];
+    int burnTurns = data['burnTurns'] ?? 0;
+    int bindTurns = data['bindTurns'] ?? 0;
+    int paralysisTurns = data['paralysisTurns'] ?? 0;
+    int invulnerableTurns = data['invulnerableTurns'] ?? 0;
+    if (burnTurns > 0)
+      list.add(
+        _buildStatusEffectIndicator(
+          'Burn',
+          burnTurns,
+          3,
+          Icons.local_fire_department,
+          Colors.orange,
+        ),
+      );
+    if (bindTurns > 0)
+      list.add(
+        _buildStatusEffectIndicator(
+          'Bind',
+          bindTurns,
+          1,
+          Icons.link_off,
+          Colors.blue,
+        ),
+      );
+    if (invulnerableTurns > 0)
+      list.add(
+        _buildStatusEffectIndicator(
+          'Miss',
+          invulnerableTurns,
+          2,
+          Icons.visibility_off,
+          Colors.grey,
+        ),
+      );
+    if (paralysisTurns > 0)
+      list.add(
+        _buildStatusEffectIndicator(
+          'Paralysis',
+          paralysisTurns,
+          1,
+          Icons.bolt,
+          Colors.amber,
+        ),
+      );
+    return list;
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -3528,12 +4136,20 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                                       ),
                                     );
 
-                                // Hitung rotasi dan panjang garis berdasarkan progres morphing
-                                final dy = boxSize.height * morphProgress;
-                                final dx = boxSize.width;
-                                final lineAngle = atan2(dy, dx);
-                                // Kalikan 2.5 agar garis sangat panjang dan pasti membelah hingga ujung layar
-                                final lineWidth = sqrt(dx * dx + dy * dy) * 2.5;
+                                final currentAvgYOffset =
+                                    boxSize.height * 0.05 * morphProgress;
+                                final currentDy =
+                                    boxSize.width * 0.53 * morphProgress;
+                                final lineAngle = atan2(
+                                  currentDy,
+                                  boxSize.width,
+                                );
+                                final lineWidth =
+                                    sqrt(
+                                      boxSize.width * boxSize.width +
+                                          currentDy * currentDy,
+                                    ) *
+                                    1.5;
 
                                 final slideYTop =
                                     -(boxSize.height / 2) * (1 - slideProgress);
@@ -3548,8 +4164,9 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                                     Transform.translate(
                                       offset: Offset(0, slideYTop),
                                       child: ClipPath(
-                                        clipper: DynamicTopClipper(
-                                          morphProgress,
+                                        clipper: AsymmetricDiagonalClipper(
+                                          isTop: true,
+                                          progress: morphProgress,
                                         ),
                                         child: Container(
                                           color: _getElementColor(
@@ -3580,8 +4197,9 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                                     Transform.translate(
                                       offset: Offset(0, slideYBottom),
                                       child: ClipPath(
-                                        clipper: DynamicBottomClipper(
-                                          morphProgress,
+                                        clipper: AsymmetricDiagonalClipper(
+                                          isTop: false,
+                                          progress: morphProgress,
                                         ),
                                         child: Container(
                                           color: _getElementColor(
@@ -3611,25 +4229,40 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                                     // Garis Putih (Clash Line)
                                     if (lineProgress > 0)
                                       Center(
-                                        child: OverflowBox(
-                                          maxWidth: double.infinity,
-                                          maxHeight: double.infinity,
-                                          child: Transform.rotate(
-                                            angle: lineAngle,
-                                            child: Container(
-                                              height:
-                                                  4, // Tetap tipis, tidak ikut melebar
-                                              width: lineWidth * lineProgress,
-                                              decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.white
-                                                        .withOpacity(0.8),
-                                                    blurRadius: 15,
-                                                    spreadRadius: 2,
+                                        child: Transform.translate(
+                                          offset: Offset(0, currentAvgYOffset),
+                                          child: OverflowBox(
+                                            maxWidth: double.infinity,
+                                            maxHeight: double.infinity,
+                                            child: Transform.rotate(
+                                              angle: lineAngle,
+                                              child: Container(
+                                                height: 12,
+                                                width: lineWidth * lineProgress,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white,
+                                                  border: Border.all(
+                                                    color: Colors.black54,
+                                                    width: 2.0,
                                                   ),
-                                                ],
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: Colors.white
+                                                          .withOpacity(0.9),
+                                                      blurRadius: 15,
+                                                      spreadRadius: 4,
+                                                    ),
+                                                    BoxShadow(
+                                                      color: Colors.black
+                                                          .withOpacity(0.5),
+                                                      blurRadius: 10,
+                                                      offset: const Offset(
+                                                        0,
+                                                        5,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
                                             ),
                                           ),
@@ -3643,54 +4276,85 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                         ),
                       ),
 
-                      // Tombol Keluar (Hanya untuk kabur)
+                      // --- MONSTER MUSUH (TOP RIGHT) ---
+                      Positioned(
+                        top: -50,
+                        right: 0,
+                        child: _buildMonsterSpriteCore(
+                          element: _getElement(enemyData['element']),
+                          isEnemy: true,
+                          shakeController: _enemyShakeController,
+                        ),
+                      ),
+                      // --- MONSTER PEMAIN (BOTTOM LEFT) ---
+                      Positioned(
+                        bottom: 20,
+                        left: 10,
+                        child: _buildMonsterSpriteCore(
+                          element: _getElement(myData['element']),
+                          isEnemy: false,
+                          shakeController: _myShakeController,
+                        ),
+                      ),
+                      // --- HUD MUSUH (TOP LEFT) ---
                       Positioned(
                         top: 16,
                         left: 16,
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.exit_to_app,
-                            color: Colors.red,
-                          ),
-                          onPressed: () {
-                            if (widget.isHost) {
-                              _firestore
-                                  .collection('rooms')
-                                  .doc(widget.roomCode)
-                                  .delete();
-                            }
-                            Navigator.pop(context);
-                          },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildFuturisticHUDCore(
+                              name: enemyData['name'],
+                              level: enemyData['level'],
+                              element: _getElement(enemyData['element']),
+                              currentHp: enemyData['hp'],
+                              maxHp: enemyData['maxHp'],
+                              currentStamina: enemyData['stamina'],
+                              maxStamina: enemyData['maxStamina'],
+                              isEnemy: true,
+                              oldHp: _oldEnemyHp,
+                              statusEffects: _buildStatusListPvP(enemyData),
+                            ),
+                          ],
                         ),
                       ),
-
+                      // --- HUD PEMAIN (BOTTOM RIGHT) ---
+                      Positioned(
+                        bottom: 12,
+                        right: 12,
+                        child: _buildFuturisticHUDCore(
+                          name: myData['name'],
+                          level: myData['level'],
+                          element: _getElement(myData['element']),
+                          currentHp: myData['hp'],
+                          maxHp: myData['maxHp'],
+                          currentStamina: myData['stamina'],
+                          maxStamina: myData['maxStamina'],
+                          isEnemy: false,
+                          oldHp: _oldMyHp,
+                          statusEffects: _buildStatusListPvP(myData),
+                        ),
+                      ),
                       // Animasi Damage Musuh
                       if (_enemyDamageValue > 0)
                         Positioned(
-                          top: size.height * 0.3,
-                          right: size.width * 0.2,
+                          top: size.height * 0.15,
+                          right: size.width * 0.25,
                           child: _buildDamageTextAnimation(
                             _enemyDamageValue,
                             isEnemy: true,
                           ),
                         ),
-
                       // Animasi Damage Pemain
                       if (_myDamageValue > 0)
                         Positioned(
-                          bottom: size.height * 0.3,
-                          left: size.width * 0.2,
+                          bottom: size.height * 0.15,
+                          left: size.width * 0.25,
                           child: _buildDamageTextAnimation(
                             _myDamageValue,
                             isEnemy: false,
                           ),
                         ),
-
-                      // --- MUSUH (TOP RIGHT) ---
-                      _buildArenaSide(isEnemy: true, data: enemyData),
-
-                      // --- PEMAIN (BOTTOM LEFT) ---
-                      _buildArenaSide(isEnemy: false, data: myData),
                     ],
                   ),
                 ),
@@ -3949,181 +4613,6 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     );
   }
 
-  Widget _buildArenaSide({
-    required bool isEnemy,
-    required Map<String, dynamic> data,
-  }) {
-    final alignment = isEnemy ? Alignment.topRight : Alignment.bottomLeft;
-    final crossAxisAlignment = isEnemy
-        ? CrossAxisAlignment.end
-        : CrossAxisAlignment.start;
-    final padding = isEnemy
-        ? const EdgeInsets.only(top: 32, right: 24)
-        : const EdgeInsets.only(bottom: 32, left: 24);
-    int burnTurns = data['burnTurns'] ?? 0;
-    int bindTurns = data['bindTurns'] ?? 0;
-    int paralysisTurns = data['paralysisTurns'] ?? 0;
-    int invulnerableTurns = data['invulnerableTurns'] ?? 0;
-
-    return Align(
-      alignment: alignment,
-      child: Padding(
-        padding: padding,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: crossAxisAlignment,
-          children: [
-            Container(
-              width: 200,
-              height: 50,
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(50),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildShakeAnimator(
-              controller: isEnemy ? _enemyShakeController : _myShakeController,
-              child: _buildHealthBarBox(data, isEnemy),
-            ),
-            if (burnTurns > 0)
-              _buildStatusEffectIndicator(
-                'Burn',
-                burnTurns,
-                3,
-                Icons.local_fire_department,
-                Colors.orange,
-              ),
-            if (bindTurns > 0)
-              _buildStatusEffectIndicator(
-                'Bind',
-                bindTurns,
-                3,
-                Icons.link_off,
-                Colors.blue,
-              ),
-            if (paralysisTurns > 0)
-              _buildStatusEffectIndicator(
-                'Paralysis',
-                paralysisTurns,
-                1,
-                Icons.bolt,
-                Colors.amber,
-              ),
-            if (invulnerableTurns > 0)
-              _buildStatusEffectIndicator(
-                'Miss',
-                invulnerableTurns,
-                2,
-                Icons.visibility_off,
-                Colors.grey,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHealthBarBox(Map<String, dynamic> data, bool isEnemy) {
-    MonsterElement element = _getElement(data['element']);
-    int currentHp = data['hp'];
-    int maxHp = data['maxHp'];
-    double newHpPercent = max(0, currentHp / maxHp);
-    int oldHpTracker = isEnemy ? _oldEnemyHp : _oldMyHp;
-    double oldHpPercent = oldHpTracker != -1
-        ? max(0, oldHpTracker / maxHp)
-        : newHpPercent;
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      width: 200,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black12, width: 2),
-        boxShadow: const [
-          BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(2, 2)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    _getElementIcon(element),
-                    size: 16,
-                    color: _getElementColor(element),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    data['name'],
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              Text(
-                'Lv${data['level']}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          TweenAnimationBuilder<double>(
-            tween: Tween<double>(begin: oldHpPercent, end: newHpPercent),
-            duration: const Duration(milliseconds: 800),
-            builder: (context, animatedValue, child) {
-              Color hpColor = animatedValue > 0.5
-                  ? Colors.green
-                  : (animatedValue > 0.2 ? Colors.orange : Colors.red);
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: animatedValue,
-                  backgroundColor: Colors.grey.shade300,
-                  color: hpColor,
-                  minHeight: 8,
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Text(
-              '$currentHp / $maxHp HP',
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-            ),
-          ),
-          const Divider(height: 12),
-          Row(
-            children: [
-              const Icon(
-                Icons.battery_charging_full,
-                size: 12,
-                color: Colors.teal,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '${data['stamina']} / ${data['maxStamina']} SP',
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildMonsterSwitchCard(
     Monster monster,
     int index,
@@ -4282,7 +4771,11 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
       icon = Icons.auto_awesome;
     } else if (move.type == MoveType.recover) {
       bgColor = Colors.teal.shade300;
-      icon = Icons.healing;
+      if (move.name == 'Heal') {
+        icon = Icons.add;
+      } else {
+        icon = Icons.healing;
+      }
     }
 
     String typeLabel = move.type == MoveType.elemental
@@ -4333,7 +4826,9 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  move.cost > 0 ? '${move.cost}' : '+${-move.cost}',
+                  move.name == 'Heal'
+                      ? '+15'
+                      : (move.cost > 0 ? '${move.cost}' : '+${-move.cost}'),
                   style: TextStyle(
                     color: textColor,
                     fontSize: 22,
@@ -4547,15 +5042,8 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
     final moves = _activeMonster.moves;
     _currentCards.clear();
 
-    final normalMoves = moves.where((m) => m.type == MoveType.normal).toList();
-    final elementalMoves = moves
-        .where((m) => m.type == MoveType.elemental)
-        .toList();
     final specialMoves = moves
         .where((m) => m.type == MoveType.special)
-        .toList();
-    final recoverMoves = moves
-        .where((m) => m.type == MoveType.recover)
         .toList();
 
     if (specialMoves.isNotEmpty && (_turnCount - _lastSpecialCardTurn) >= 15) {
@@ -4563,18 +5051,15 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
       _lastSpecialCardTurn = _turnCount;
     }
 
-    List<MonsterMove> fillPool = [];
-    if (normalMoves.isNotEmpty) fillPool.addAll(normalMoves);
-    if (elementalMoves.isNotEmpty) fillPool.addAll(elementalMoves);
-    if (recoverMoves.isNotEmpty) fillPool.addAll(recoverMoves);
-    fillPool.shuffle();
+    // Buat "dek" dari semua kartu non-spesial yang belum ada di tangan
+    List<MonsterMove> deck = moves
+        .where((m) => m.type != MoveType.special && !_currentCards.contains(m))
+        .toList();
+    deck.shuffle();
 
-    while (_currentCards.length < 3 && moves.isNotEmpty) {
-      var availableMoves = moves
-          .where((m) => !_currentCards.contains(m))
-          .toList();
-      if (availableMoves.isEmpty) break;
-      _currentCards.add(availableMoves[random.nextInt(availableMoves.length)]);
+    // Isi sisa tangan dari "dek"
+    while (_currentCards.length < 3 && deck.isNotEmpty) {
+      _currentCards.add(deck.removeAt(0));
     }
 
     _currentCards.shuffle();
@@ -4777,15 +5262,25 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
     }
 
     if (move.type == MoveType.recover) {
-      setState(() {
-        _playerStamina = min(
-          _activeMonster.stamina,
-          _playerStamina - move.cost,
-        );
-        _syncPartyStats();
-        _battleLog = "Fokus & pulihkan ${-move.cost} SP!";
-        _isPlayerTurn = false;
-      });
+      if (move.name == 'Heal') {
+        setState(() {
+          _oldPlayerHp = _playerHp;
+          _playerHp = min(_activeMonster.hp, _playerHp + 15);
+          _syncPartyStats();
+          _battleLog = "${_activeMonster.name} memulihkan 15 HP!";
+          _isPlayerTurn = false;
+        });
+      } else {
+        setState(() {
+          _playerStamina = min(
+            _activeMonster.stamina,
+            _playerStamina - move.cost,
+          );
+          _syncPartyStats();
+          _battleLog = "Fokus & pulihkan ${-move.cost} SP!";
+          _isPlayerTurn = false;
+        });
+      }
       _enemyTurn();
       return;
     }
@@ -4934,10 +5429,20 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                 score = 0.5;
                 break;
               case MoveType.recover:
-                if (_enemyStamina < _activeEnemyMonster.stamina * 0.4) {
-                  score = 2.5;
+                if (move.name == 'Heal') {
+                  // Heal is valuable when HP is low
+                  if (_enemyHp < _activeEnemyMonster.hp * 0.5) {
+                    score = 3.0; // Very high score to force healing
+                  } else {
+                    score = -1.0; // Avoid healing with high HP
+                  }
                 } else {
-                  score = -1.0;
+                  // Recover is only valuable when stamina is low
+                  if (_enemyStamina < _activeEnemyMonster.stamina * 0.4) {
+                    score = 2.5; // High score to force recovery
+                  } else {
+                    score = -1.0; // Avoid recovering with high stamina
+                  }
                 }
                 break;
             }
@@ -4970,7 +5475,15 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
           );
 
           if (chosenMove.type == MoveType.recover) {
-            _battleLog = "${statusLog}Trainer pulihkan ${-chosenMove.cost} SP!";
+            if (chosenMove.name == 'Heal') {
+              _oldEnemyHp = _enemyHp;
+              _enemyHp = min(_activeEnemyMonster.hp, _enemyHp + 15);
+              _battleLog =
+                  "$statusLog${_activeEnemyMonster.name} memulihkan 15 HP!";
+            } else {
+              _battleLog =
+                  "${statusLog}Trainer pulihkan ${-chosenMove.cost} SP!";
+            }
           } else {
             final damageResult = _calculateDamage(
               _activeEnemyMonster, // Menggunakan _activeEnemyMonster
@@ -5165,6 +5678,94 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
     );
   }
 
+  List<Widget> _buildStatusList({required bool isEnemy}) {
+    List<Widget> list = [];
+    if (isEnemy) {
+      if (_enemyBurnTurns > 0)
+        list.add(
+          _buildStatusEffectIndicator(
+            'Burn',
+            _enemyBurnTurns,
+            3,
+            Icons.local_fire_department,
+            Colors.orange,
+          ),
+        );
+      if (_enemyBindTurns > 0)
+        list.add(
+          _buildStatusEffectIndicator(
+            'Bind',
+            _enemyBindTurns,
+            1,
+            Icons.link_off,
+            Colors.blue,
+          ),
+        );
+      if (_enemyInvulnerableTurns > 0)
+        list.add(
+          _buildStatusEffectIndicator(
+            'Miss',
+            _enemyInvulnerableTurns,
+            2,
+            Icons.visibility_off,
+            Colors.grey,
+          ),
+        );
+      if (_enemyParalysisTurns > 0)
+        list.add(
+          _buildStatusEffectIndicator(
+            'Paralysis',
+            _enemyParalysisTurns,
+            1,
+            Icons.bolt,
+            Colors.amber,
+          ),
+        );
+    } else {
+      if (_playerBurnTurns > 0)
+        list.add(
+          _buildStatusEffectIndicator(
+            'Burn',
+            _playerBurnTurns,
+            3,
+            Icons.local_fire_department,
+            Colors.orange,
+          ),
+        );
+      if (_playerBindTurns > 0)
+        list.add(
+          _buildStatusEffectIndicator(
+            'Bind',
+            _playerBindTurns,
+            1,
+            Icons.link_off,
+            Colors.blue,
+          ),
+        );
+      if (_playerInvulnerableTurns > 0)
+        list.add(
+          _buildStatusEffectIndicator(
+            'Miss',
+            _playerInvulnerableTurns,
+            2,
+            Icons.visibility_off,
+            Colors.grey,
+          ),
+        );
+      if (_playerParalysisTurns > 0)
+        list.add(
+          _buildStatusEffectIndicator(
+            'Paralysis',
+            _playerParalysisTurns,
+            1,
+            Icons.bolt,
+            Colors.amber,
+          ),
+        );
+    }
+    return list;
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -5201,10 +5802,17 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                               ((linearValue - 0.50) / 0.50).clamp(0.0, 1.0),
                             );
 
-                            final dy = boxSize.height * morphProgress;
-                            final dx = boxSize.width;
-                            final lineAngle = atan2(dy, dx);
-                            final lineWidth = sqrt(dx * dx + dy * dy) * 2.5;
+                            final currentAvgYOffset =
+                                boxSize.height * 0.05 * morphProgress;
+                            final currentDy =
+                                boxSize.width * 0.53 * morphProgress;
+                            final lineAngle = atan2(currentDy, boxSize.width);
+                            final lineWidth =
+                                sqrt(
+                                  boxSize.width * boxSize.width +
+                                      currentDy * currentDy,
+                                ) *
+                                1.5;
 
                             final slideYTop =
                                 -(boxSize.height / 2) * (1 - slideProgress);
@@ -5218,7 +5826,10 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                                 Transform.translate(
                                   offset: Offset(0, slideYTop),
                                   child: ClipPath(
-                                    clipper: DynamicTopClipper(morphProgress),
+                                    clipper: AsymmetricDiagonalClipper(
+                                      isTop: true,
+                                      progress: morphProgress,
+                                    ),
                                     child: Container(
                                       color: _activeEnemyMonster.elementColor,
                                       child: Stack(
@@ -5244,8 +5855,9 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                                 Transform.translate(
                                   offset: Offset(0, slideYBottom),
                                   child: ClipPath(
-                                    clipper: DynamicBottomClipper(
-                                      morphProgress,
+                                    clipper: AsymmetricDiagonalClipper(
+                                      isTop: false,
+                                      progress: morphProgress,
                                     ),
                                     child: Container(
                                       color: _activeMonster.elementColor,
@@ -5271,25 +5883,37 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                                 ),
                                 if (lineProgress > 0)
                                   Center(
-                                    child: OverflowBox(
-                                      maxWidth: double.infinity,
-                                      maxHeight: double.infinity,
-                                      child: Transform.rotate(
-                                        angle: lineAngle,
-                                        child: Container(
-                                          height: 4,
-                                          width: lineWidth * lineProgress,
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.white.withOpacity(
-                                                  0.8,
-                                                ),
-                                                blurRadius: 15,
-                                                spreadRadius: 2,
+                                    child: Transform.translate(
+                                      offset: Offset(0, currentAvgYOffset),
+                                      child: OverflowBox(
+                                        maxWidth: double.infinity,
+                                        maxHeight: double.infinity,
+                                        child: Transform.rotate(
+                                          angle: lineAngle,
+                                          child: Container(
+                                            height: 12,
+                                            width: lineWidth * lineProgress,
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              border: Border.all(
+                                                color: Colors.black54,
+                                                width: 2.0,
                                               ),
-                                            ],
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.white
+                                                      .withOpacity(0.9),
+                                                  blurRadius: 15,
+                                                  spreadRadius: 4,
+                                                ),
+                                                BoxShadow(
+                                                  color: Colors.black
+                                                      .withOpacity(0.5),
+                                                  blurRadius: 10,
+                                                  offset: const Offset(0, 5),
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -5303,51 +5927,82 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                     ),
                   ),
 
+                  // --- MONSTER MUSUH (TOP RIGHT) ---
+                  Positioned(
+                    top: -50,
+                    right: 0,
+                    child: _buildMonsterSpriteCore(
+                      element: _activeEnemyMonster.element,
+                      isEnemy: true,
+                      shakeController: _enemyShakeController,
+                    ),
+                  ),
+                  // --- MONSTER PEMAIN (BOTTOM LEFT) ---
+                  Positioned(
+                    bottom: 20,
+                    left: 10,
+                    child: _buildMonsterSpriteCore(
+                      element: _activeMonster.element,
+                      isEnemy: false,
+                      shakeController: _playerShakeController,
+                    ),
+                  ),
+                  // --- HUD MUSUH (TOP LEFT) ---
                   Positioned(
                     top: 16,
                     left: 16,
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.arrow_back_ios_new,
-                        color: Colors.white,
-                      ),
-                      onPressed: () => Navigator.pop(context),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildFuturisticHUDCore(
+                          name: _activeEnemyMonster.name,
+                          level: _activeEnemyMonster.level,
+                          element: _activeEnemyMonster.element,
+                          currentHp: _enemyHp,
+                          maxHp: _activeEnemyMonster.hp,
+                          currentStamina: _enemyStamina,
+                          maxStamina: _activeEnemyMonster.stamina,
+                          isEnemy: true,
+                          oldHp: _oldEnemyHp,
+                          statusEffects: _buildStatusList(isEnemy: true),
+                        ),
+                      ],
                     ),
                   ),
-
+                  // --- HUD PEMAIN (BOTTOM RIGHT) ---
+                  Positioned(
+                    bottom: 12,
+                    right: 12,
+                    child: _buildFuturisticHUDCore(
+                      name: _activeMonster.name,
+                      level: _activeMonster.level,
+                      element: _activeMonster.element,
+                      currentHp: _playerHp,
+                      maxHp: _activeMonster.hp,
+                      currentStamina: _playerStamina,
+                      maxStamina: _activeMonster.stamina,
+                      isEnemy: false,
+                      oldHp: _oldPlayerHp,
+                      statusEffects: _buildStatusList(isEnemy: false),
+                    ),
+                  ),
                   // Animasi Damage Musuh
                   if (_enemyDamageValue > 0)
                     Positioned(
-                      top: size.height * 0.3,
-                      right: size.width * 0.2,
+                      top: size.height * 0.15,
+                      right: size.width * 0.25,
                       child: _buildDamageText(_enemyDamageValue, isEnemy: true),
                     ),
-
                   // Animasi Damage Pemain
                   if (_playerDamageValue > 0)
                     Positioned(
-                      bottom: size.height * 0.3,
-                      left: size.width * 0.2,
+                      bottom: size.height * 0.15,
+                      left: size.width * 0.25,
                       child: _buildDamageText(
                         _playerDamageValue,
                         isEnemy: false,
                       ),
                     ),
-
-                  // MUSUH
-                  _buildArenaSide(
-                    isEnemy: true, // Menggunakan _activeEnemyMonster
-                    monster: _activeEnemyMonster,
-                    currentHp: _enemyHp,
-                    currentStamina: _enemyStamina,
-                  ),
-                  // PEMAIN
-                  _buildArenaSide(
-                    isEnemy: false,
-                    monster: _activeMonster,
-                    currentHp: _playerHp,
-                    currentStamina: _playerStamina,
-                  ),
                 ],
               ),
             ),
@@ -5515,122 +6170,6 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
     );
   }
 
-  Widget _buildArenaSide({
-    required bool isEnemy,
-    required Monster monster,
-    required int currentHp,
-    int? currentStamina,
-  }) {
-    final alignment = isEnemy ? Alignment.topRight : Alignment.bottomLeft;
-    final crossAxisAlignment = isEnemy
-        ? CrossAxisAlignment.end
-        : CrossAxisAlignment.start;
-    final padding = isEnemy
-        ? const EdgeInsets.only(top: 32, right: 24)
-        : const EdgeInsets.only(bottom: 32, left: 24);
-
-    return Align(
-      alignment: alignment,
-      child: Padding(
-        padding: padding,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: crossAxisAlignment,
-          children: [
-            Container(
-              width: 200,
-              height: 50,
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(50),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildShakeAnimator(
-              controller: isEnemy
-                  ? _enemyShakeController
-                  : _playerShakeController,
-              child: _buildHealthBar(
-                monster,
-                currentHp,
-                monster.hp,
-                currentStamina ?? monster.stamina,
-                isEnemy: isEnemy,
-              ),
-            ),
-            if (isEnemy) ...[
-              if (_enemyBurnTurns > 0)
-                _buildStatusEffectIndicator(
-                  'Burn',
-                  _enemyBurnTurns,
-                  3,
-                  Icons.local_fire_department,
-                  Colors.orange,
-                ),
-              if (_enemyBindTurns > 0)
-                _buildStatusEffectIndicator(
-                  'Bind',
-                  _enemyBindTurns,
-                  1,
-                  Icons.link_off,
-                  Colors.blue,
-                ),
-              if (_enemyInvulnerableTurns > 0)
-                _buildStatusEffectIndicator(
-                  'Miss',
-                  _enemyInvulnerableTurns,
-                  2,
-                  Icons.visibility_off,
-                  Colors.grey,
-                ),
-              if (_enemyParalysisTurns > 0)
-                _buildStatusEffectIndicator(
-                  'Paralysis',
-                  _enemyParalysisTurns,
-                  1,
-                  Icons.bolt,
-                  Colors.amber,
-                ),
-            ] else ...[
-              if (_playerBurnTurns > 0)
-                _buildStatusEffectIndicator(
-                  'Burn',
-                  _playerBurnTurns,
-                  3,
-                  Icons.local_fire_department,
-                  Colors.orange,
-                ),
-              if (_playerBindTurns > 0)
-                _buildStatusEffectIndicator(
-                  'Bind',
-                  _playerBindTurns,
-                  1,
-                  Icons.link_off,
-                  Colors.blue,
-                ),
-              if (_playerInvulnerableTurns > 0)
-                _buildStatusEffectIndicator(
-                  'Miss',
-                  _playerInvulnerableTurns,
-                  2,
-                  Icons.visibility_off,
-                  Colors.grey,
-                ),
-              if (_playerParalysisTurns > 0)
-                _buildStatusEffectIndicator(
-                  'Paralysis',
-                  _playerParalysisTurns,
-                  1,
-                  Icons.bolt,
-                  Colors.amber,
-                ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildDamageText(int damage, {required bool isEnemy}) {
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0.0, end: 1.0),
@@ -5664,107 +6203,6 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
     );
   }
 
-  Widget _buildHealthBar(
-    Monster monster,
-    int currentHp,
-    int maxHp,
-    int currentStamina, {
-    required bool isEnemy,
-  }) {
-    int oldHp = isEnemy ? _oldEnemyHp : _oldPlayerHp;
-    double oldHpPercent = max(0, oldHp / maxHp);
-    double newHpPercent = max(0, currentHp / maxHp);
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      width: 200,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black12, width: 2),
-        boxShadow: const [
-          BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(2, 2)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    _getElementIcon(monster.element),
-                    size: 16,
-                    color: monster.elementColor,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    monster.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              Text(
-                'Lv${monster.level}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          TweenAnimationBuilder<double>(
-            tween: Tween<double>(begin: oldHpPercent, end: newHpPercent),
-            duration: const Duration(milliseconds: 800),
-            builder: (context, animatedValue, child) {
-              Color hpColor = animatedValue > 0.5
-                  ? Colors.green
-                  : (animatedValue > 0.2 ? Colors.orange : Colors.red);
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: animatedValue,
-                  backgroundColor: Colors.grey.shade300,
-                  color: hpColor,
-                  minHeight: 8,
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Text(
-              '$currentHp / $maxHp HP',
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-            ),
-          ),
-          const Divider(height: 12),
-          Row(
-            children: [
-              const Icon(
-                Icons.battery_charging_full,
-                size: 12,
-                color: Colors.teal,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '$currentStamina / ${monster.stamina} SP',
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildCard(MonsterMove move) {
     Color bgColor = Colors.white;
     IconData icon = Icons.sports_mma;
@@ -5777,7 +6215,11 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
       icon = Icons.auto_awesome;
     } else if (move.type == MoveType.recover) {
       bgColor = Colors.teal.shade300;
-      icon = Icons.healing;
+      if (move.name == 'Heal') {
+        icon = Icons.add;
+      } else {
+        icon = Icons.healing;
+      }
     }
 
     String typeLabel = move.type == MoveType.elemental
@@ -5830,7 +6272,9 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    move.cost > 0 ? '${move.cost}' : '+${-move.cost}',
+                    move.name == 'Heal'
+                        ? '+15'
+                        : (move.cost > 0 ? '${move.cost}' : '+${-move.cost}'),
                     style: TextStyle(
                       color: textColor,
                       fontSize: 22,
