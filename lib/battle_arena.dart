@@ -1906,7 +1906,7 @@ class _JourneyBattleArenaState extends State<JourneyBattleArena>
     );
     _clashController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1800),
+      duration: const Duration(milliseconds: 2500),
     );
     _playerShakeController = AnimationController(
       vsync: this,
@@ -2605,6 +2605,40 @@ class _JourneyBattleArenaState extends State<JourneyBattleArena>
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
+                  // 🌟 BACKGROUND ARENA SESUNGGUHNYA 🌟
+                  Positioned.fill(
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        ClipPath(
+                          clipper: AsymmetricDiagonalClipper(
+                            isTop: true,
+                            progress: 1.0,
+                          ),
+                          child: Image.asset(
+                            'assets/images/battle_bg_journey.png', // Frame Atas
+                            fit: BoxFit.cover,
+                            alignment: const Alignment(
+                              -1.0,
+                              1.0,
+                            ), // Bebas atur posisi
+                          ),
+                        ),
+                        ClipPath(
+                          clipper: AsymmetricDiagonalClipper(
+                            isTop: false,
+                            progress: 1.0,
+                          ),
+                          child: Image.asset(
+                            'assets/images/battle_bg_journey.png', // Frame Bawah
+                            fit: BoxFit.cover,
+                            alignment:
+                                Alignment.bottomCenter, // Bebas atur posisi
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   // Animasi Clash
                   Positioned.fill(
                     child: LayoutBuilder(
@@ -2618,14 +2652,18 @@ class _JourneyBattleArenaState extends State<JourneyBattleArena>
                           builder: (context, child) {
                             final linearValue = _clashController.value;
                             final slideProgress = Curves.easeOut.transform(
-                              (linearValue / 0.35).clamp(0.0, 1.0),
+                              (linearValue / 0.25).clamp(0.0, 1.0),
                             );
                             final lineProgress = Curves.easeOut.transform(
-                              ((linearValue - 0.35) / 0.15).clamp(0.0, 1.0),
+                              ((linearValue - 0.25) / 0.10).clamp(0.0, 1.0),
                             );
                             final morphProgress = Curves.easeOutBack.transform(
-                              ((linearValue - 0.50) / 0.50).clamp(0.0, 1.0),
+                              ((linearValue - 0.35) / 0.35).clamp(0.0, 1.0),
                             );
+                            final fadeOutProgress = Curves.easeIn.transform(
+                              ((linearValue - 0.70) / 0.30).clamp(0.0, 1.0),
+                            );
+                            final opacity = 1.0 - fadeOutProgress;
 
                             final currentAvgYOffset =
                                 boxSize.height * 0.05 * morphProgress;
@@ -2648,64 +2686,71 @@ class _JourneyBattleArenaState extends State<JourneyBattleArena>
                               fit: StackFit.expand,
                               clipBehavior: Clip.none,
                               children: [
-                                Transform.translate(
-                                  offset: Offset(0, slideYTop),
-                                  child: ClipPath(
-                                    clipper: AsymmetricDiagonalClipper(
-                                      isTop: true,
-                                      progress: morphProgress,
-                                    ),
-                                    child: Container(
-                                      color: _activeEnemyMonster.elementColor,
-                                      child: Stack(
-                                        children: [
-                                          Positioned(
-                                            top: -40,
-                                            right: -40,
-                                            child: Icon(
-                                              _getElementIcon(
-                                                _activeEnemyMonster.element,
+                                if (opacity > 0.0)
+                                  Opacity(
+                                    opacity: opacity,
+                                    child: Transform.translate(
+                                      offset: Offset(0, slideYTop),
+                                      child: ClipPath(
+                                        clipper: AsymmetricDiagonalClipper(
+                                          isTop: true,
+                                          progress: morphProgress,
+                                        ),
+                                        child: Container(
+                                          color:
+                                              _activeEnemyMonster.elementColor,
+                                          child: Stack(
+                                            children: [
+                                              Positioned(
+                                                top: -40,
+                                                right: -40,
+                                                child: Icon(
+                                                  _getElementIcon(
+                                                    _activeEnemyMonster.element,
+                                                  ),
+                                                  size: 250,
+                                                  color: Colors.white
+                                                      .withOpacity(0.1),
+                                                ),
                                               ),
-                                              size: 250,
-                                              color: Colors.white.withOpacity(
-                                                0.1,
-                                              ),
-                                            ),
+                                            ],
                                           ),
-                                        ],
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                Transform.translate(
-                                  offset: Offset(0, slideYBottom),
-                                  child: ClipPath(
-                                    clipper: AsymmetricDiagonalClipper(
-                                      isTop: false,
-                                      progress: morphProgress,
-                                    ),
-                                    child: Container(
-                                      color: _activeMonster.elementColor,
-                                      child: Stack(
-                                        children: [
-                                          Positioned(
-                                            bottom: -40,
-                                            left: -40,
-                                            child: Icon(
-                                              _getElementIcon(
-                                                _activeMonster.element,
+                                if (opacity > 0.0)
+                                  Opacity(
+                                    opacity: opacity,
+                                    child: Transform.translate(
+                                      offset: Offset(0, slideYBottom),
+                                      child: ClipPath(
+                                        clipper: AsymmetricDiagonalClipper(
+                                          isTop: false,
+                                          progress: morphProgress,
+                                        ),
+                                        child: Container(
+                                          color: _activeMonster.elementColor,
+                                          child: Stack(
+                                            children: [
+                                              Positioned(
+                                                bottom: -40,
+                                                left: -40,
+                                                child: Icon(
+                                                  _getElementIcon(
+                                                    _activeMonster.element,
+                                                  ),
+                                                  size: 250,
+                                                  color: Colors.white
+                                                      .withOpacity(0.1),
+                                                ),
                                               ),
-                                              size: 250,
-                                              color: Colors.white.withOpacity(
-                                                0.1,
-                                              ),
-                                            ),
+                                            ],
                                           ),
-                                        ],
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
                                 if (lineProgress > 0)
                                   Center(
                                     child: Transform.translate(
@@ -3156,8 +3201,9 @@ class _JourneyBattleArenaState extends State<JourneyBattleArena>
     return GestureDetector(
       onTap: () => _playTurn(move),
       child: Container(
-        width: 130,
-        height: 190,
+        width: 110,
+        height: 160,
+        margin: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(16),
@@ -3189,7 +3235,7 @@ class _JourneyBattleArenaState extends State<JourneyBattleArena>
                     'COST',
                     style: TextStyle(
                       color: textColor.withOpacity(0.7),
-                      fontSize: 10,
+                      fontSize: 9,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -3200,7 +3246,7 @@ class _JourneyBattleArenaState extends State<JourneyBattleArena>
                         : (move.cost > 0 ? '${move.cost}' : '+${-move.cost}'),
                     style: TextStyle(
                       color: textColor,
-                      fontSize: 22,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -3217,7 +3263,7 @@ class _JourneyBattleArenaState extends State<JourneyBattleArena>
                     style: TextStyle(
                       color: textColor,
                       fontWeight: FontWeight.bold,
-                      fontSize: 18,
+                      fontSize: 14,
                       shadows: [
                         Shadow(
                           color: Colors.black.withOpacity(0.4),
@@ -3242,13 +3288,13 @@ class _JourneyBattleArenaState extends State<JourneyBattleArena>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(icon, color: textColor, size: 16),
+                  Icon(icon, color: textColor, size: 14),
                   const SizedBox(width: 6),
                   Text(
                     typeLabel,
                     style: TextStyle(
                       color: textColor,
-                      fontSize: 12,
+                      fontSize: 10,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -3272,9 +3318,9 @@ class _JourneyBattleArenaState extends State<JourneyBattleArena>
       child: Opacity(
         opacity: disabled ? 0.6 : 1.0,
         child: Container(
-          width: 130,
-          height: 190,
-          margin: const EdgeInsets.symmetric(horizontal: 6),
+          width: 110,
+          height: 160,
+          margin: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
             color: bgColor,
             borderRadius: BorderRadius.circular(16),
@@ -3306,7 +3352,7 @@ class _JourneyBattleArenaState extends State<JourneyBattleArena>
                       'LVL ${monster.level}',
                       style: const TextStyle(
                         color: Colors.white70,
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -3316,7 +3362,7 @@ class _JourneyBattleArenaState extends State<JourneyBattleArena>
                         color: isActive
                             ? Colors.amber
                             : (isDead ? Colors.red : Colors.white),
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -3330,7 +3376,7 @@ class _JourneyBattleArenaState extends State<JourneyBattleArena>
                     children: [
                       Icon(
                         _getElementIcon(monster.element),
-                        size: 48,
+                        size: 40,
                         color: Colors.white.withOpacity(0.9),
                       ),
                       const SizedBox(height: 8),
@@ -3344,7 +3390,7 @@ class _JourneyBattleArenaState extends State<JourneyBattleArena>
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                            fontSize: 12,
                             shadows: [
                               Shadow(
                                 color: Colors.black.withOpacity(0.4),
@@ -3374,22 +3420,23 @@ class _JourneyBattleArenaState extends State<JourneyBattleArena>
                       'HP',
                       style: TextStyle(
                         color: Colors.white70,
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    LinearProgressIndicator(
+                    SmoothProgressBar(
                       value: _partyHp[monster]! / monster.hp,
                       backgroundColor: Colors.black26,
-                      color: isDead ? Colors.red : Colors.green,
+                      baseColor: Colors.greenAccent,
                       minHeight: 6,
+                      isHealthBar: true,
                     ),
                     const SizedBox(height: 4),
                     Text(
                       '${_partyHp[monster]}/${monster.hp}',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.bold,
                       ),
                     ),

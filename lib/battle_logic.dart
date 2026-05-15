@@ -744,7 +744,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
     _clashController = AnimationController(
       vsync: this,
       duration: const Duration(
-        milliseconds: 1800,
+        milliseconds: 2500, // Diperlama untuk memberikan waktu animasi Fade Out
       ), // Diperlama untuk animasi garis clash
     );
     _playerShakeController = AnimationController(
@@ -2213,6 +2213,40 @@ class _WildBattleArenaState extends State<WildBattleArena>
                 clipBehavior:
                     Clip.none, // Cegah garis putih terpotong batas luar
                 children: [
+                  // 🌟 BACKGROUND ARENA SESUNGGUHNYA 🌟
+                  Positioned.fill(
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        ClipPath(
+                          clipper: AsymmetricDiagonalClipper(
+                            isTop: true,
+                            progress: 1.0,
+                          ),
+                          child: Image.asset(
+                            'assets/images/battle_bg_pvp.png', // Frame Atas
+                            fit: BoxFit.cover,
+                            alignment: Alignment(
+                              -1.0,
+                              1.0,
+                            ), // Bebas atur posisi
+                          ),
+                        ),
+                        ClipPath(
+                          clipper: AsymmetricDiagonalClipper(
+                            isTop: false,
+                            progress: 1.0,
+                          ),
+                          child: Image.asset(
+                            'assets/images/battle_bg_wild.png', // Frame Bawah
+                            fit: BoxFit.cover,
+                            alignment:
+                                Alignment.bottomCenter, // Bebas atur posisi
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   // Animasi Clash Layar Diagonal
                   Positioned.fill(
                     child: LayoutBuilder(
@@ -2225,20 +2259,21 @@ class _WildBattleArenaState extends State<WildBattleArena>
                           animation: _clashController,
                           builder: (context, child) {
                             final linearValue = _clashController.value;
-                            // 35% Waktu pertama: Meluncur sebagai persegi dari Atas & Bawah
                             final slideProgress = Curves.easeOut.transform(
-                              (linearValue / 0.35).clamp(0.0, 1.0),
+                              (linearValue / 0.25).clamp(0.0, 1.0),
                             );
 
-                            // 15% Waktu (0.35 - 0.50): Garis putih memanjang dari tengah
                             final lineProgress = Curves.easeOut.transform(
-                              ((linearValue - 0.35) / 0.15).clamp(0.0, 1.0),
+                              ((linearValue - 0.25) / 0.10).clamp(0.0, 1.0),
                             );
 
-                            // 50% Waktu sisanya (0.50 - 1.0): Membelah perlahan menjadi segitiga diagonal
                             final morphProgress = Curves.easeOutBack.transform(
-                              ((linearValue - 0.50) / 0.50).clamp(0.0, 1.0),
+                              ((linearValue - 0.35) / 0.35).clamp(0.0, 1.0),
                             );
+                            final fadeOutProgress = Curves.easeIn.transform(
+                              ((linearValue - 0.70) / 0.30).clamp(0.0, 1.0),
+                            );
+                            final opacity = 1.0 - fadeOutProgress;
 
                             final currentAvgYOffset =
                                 boxSize.height * 0.05 * morphProgress;
@@ -2264,65 +2299,71 @@ class _WildBattleArenaState extends State<WildBattleArena>
                               clipBehavior: Clip.none, // Izinkan Overflow
                               children: [
                                 // Sisi Musuh (Top)
-                                Transform.translate(
-                                  offset: Offset(0, slideYTop),
-                                  child: ClipPath(
-                                    clipper: AsymmetricDiagonalClipper(
-                                      isTop: true,
-                                      progress: morphProgress,
-                                    ),
-                                    child: Container(
-                                      color: _enemyMonster.elementColor,
-                                      child: Stack(
-                                        children: [
-                                          Positioned(
-                                            top: -40,
-                                            right: -40,
-                                            child: Icon(
-                                              _getElementIcon(
-                                                _enemyMonster.element,
+                                if (opacity > 0.0)
+                                  Opacity(
+                                    opacity: opacity,
+                                    child: Transform.translate(
+                                      offset: Offset(0, slideYTop),
+                                      child: ClipPath(
+                                        clipper: AsymmetricDiagonalClipper(
+                                          isTop: true,
+                                          progress: morphProgress,
+                                        ),
+                                        child: Container(
+                                          color: _enemyMonster.elementColor,
+                                          child: Stack(
+                                            children: [
+                                              Positioned(
+                                                top: -40,
+                                                right: -40,
+                                                child: Icon(
+                                                  _getElementIcon(
+                                                    _enemyMonster.element,
+                                                  ),
+                                                  size: 250,
+                                                  color: Colors.white
+                                                      .withOpacity(0.1),
+                                                ),
                                               ),
-                                              size: 250,
-                                              color: Colors.white.withOpacity(
-                                                0.1,
-                                              ),
-                                            ),
+                                            ],
                                           ),
-                                        ],
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
                                 // Sisi Pemain (Bottom)
-                                Transform.translate(
-                                  offset: Offset(0, slideYBottom),
-                                  child: ClipPath(
-                                    clipper: AsymmetricDiagonalClipper(
-                                      isTop: false,
-                                      progress: morphProgress,
-                                    ),
-                                    child: Container(
-                                      color: _activeMonster.elementColor,
-                                      child: Stack(
-                                        children: [
-                                          Positioned(
-                                            bottom: -40,
-                                            left: -40,
-                                            child: Icon(
-                                              _getElementIcon(
-                                                _activeMonster.element,
+                                if (opacity > 0.0)
+                                  Opacity(
+                                    opacity: opacity,
+                                    child: Transform.translate(
+                                      offset: Offset(0, slideYBottom),
+                                      child: ClipPath(
+                                        clipper: AsymmetricDiagonalClipper(
+                                          isTop: false,
+                                          progress: morphProgress,
+                                        ),
+                                        child: Container(
+                                          color: _activeMonster.elementColor,
+                                          child: Stack(
+                                            children: [
+                                              Positioned(
+                                                bottom: -40,
+                                                left: -40,
+                                                child: Icon(
+                                                  _getElementIcon(
+                                                    _activeMonster.element,
+                                                  ),
+                                                  size: 250,
+                                                  color: Colors.white
+                                                      .withOpacity(0.1),
+                                                ),
                                               ),
-                                              size: 250,
-                                              color: Colors.white.withOpacity(
-                                                0.1,
-                                              ),
-                                            ),
+                                            ],
                                           ),
-                                        ],
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
                                 // Garis Putih (Clash Line)
                                 if (lineProgress > 0)
                                   Center(
@@ -2714,127 +2755,6 @@ class _WildBattleArenaState extends State<WildBattleArena>
     );
   }
 
-  // Widget Bantuan: Membangun satu sisi arena (Pemain atau Musuh)
-  Widget _buildArenaSide({
-    required bool isEnemy,
-    required Monster monster,
-    required int currentHp,
-    int? currentStamina,
-  }) {
-    final alignment = isEnemy ? Alignment.topRight : Alignment.bottomLeft;
-    final crossAxisAlignment = isEnemy
-        ? CrossAxisAlignment.end
-        : CrossAxisAlignment.start;
-    final padding = isEnemy
-        ? const EdgeInsets.only(top: 32, right: 24)
-        : const EdgeInsets.only(bottom: 32, left: 24);
-
-    return Align(
-      alignment: alignment,
-      child: Padding(
-        padding: padding,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: crossAxisAlignment,
-          children: [
-            // Platform Pijakan Monster
-            Container(
-              width: 200,
-              height: 50,
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(50),
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Health Bar
-            _buildShakeAnimator(
-              controller: isEnemy
-                  ? _enemyShakeController
-                  : _playerShakeController,
-              child: _buildHealthBar(
-                monster,
-                currentHp,
-                monster.hp,
-                currentStamina ?? monster.stamina,
-                isEnemy: isEnemy,
-              ),
-            ),
-            // Indikator Status Efek
-            if (isEnemy) ...[
-              if (_enemyBurnTurns > 0)
-                _buildStatusEffectIndicator(
-                  'Burn',
-                  _enemyBurnTurns,
-                  3,
-                  Icons.local_fire_department,
-                  Colors.orange,
-                ),
-              if (_enemyBindTurns > 0)
-                _buildStatusEffectIndicator(
-                  'Bind',
-                  _enemyBindTurns,
-                  1,
-                  Icons.link_off,
-                  Colors.blue,
-                ), // Mengganti ikon bind
-              if (_enemyInvulnerableTurns > 0)
-                _buildStatusEffectIndicator(
-                  'Miss',
-                  _enemyInvulnerableTurns,
-                  2,
-                  Icons.visibility_off,
-                  Colors.grey,
-                ),
-              if (_enemyParalysisTurns > 0)
-                _buildStatusEffectIndicator(
-                  'Paralysis',
-                  _enemyParalysisTurns,
-                  1,
-                  Icons.bolt,
-                  Colors.amber,
-                ),
-            ] else ...[
-              // Indikator untuk Player
-              if (_playerBurnTurns > 0)
-                _buildStatusEffectIndicator(
-                  'Burn',
-                  _playerBurnTurns,
-                  3,
-                  Icons.local_fire_department,
-                  Colors.orange,
-                ),
-              if (_playerBindTurns > 0)
-                _buildStatusEffectIndicator(
-                  'Bind',
-                  _playerBindTurns,
-                  1,
-                  Icons.link_off,
-                  Colors.blue,
-                ),
-              if (_playerInvulnerableTurns > 0)
-                _buildStatusEffectIndicator(
-                  'Miss',
-                  _playerInvulnerableTurns,
-                  2,
-                  Icons.visibility_off,
-                  Colors.grey,
-                ),
-              if (_playerParalysisTurns > 0)
-                _buildStatusEffectIndicator(
-                  'Paralysis',
-                  _playerParalysisTurns,
-                  1,
-                  Icons.bolt,
-                  Colors.amber,
-                ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
   // Widget Bantuan: Teks Damage Animasi
   Widget _buildDamageText(int damage) {
     return Text(
@@ -2848,133 +2768,6 @@ class _WildBattleArenaState extends State<WildBattleArena>
             blurRadius: 2.0,
             color: Colors.black,
             offset: Offset(1.0, 1.0),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Widget Bantuan: Health Bar Box
-  Widget _buildHealthBar(
-    Monster monster,
-    int currentHp,
-    int maxHp,
-    int currentStamina, {
-    required bool isEnemy,
-  }) {
-    double newHpPercent = max(0, currentHp / maxHp);
-
-    return Container(
-      key: ValueKey('${monster.name}_$maxHp'),
-      padding: const EdgeInsets.all(12),
-      width: 200,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black12, width: 2),
-        boxShadow: const [
-          BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(2, 2)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    _getElementIcon(monster.element),
-                    size: 16,
-                    color: monster.elementColor,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    monster.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              Text(
-                'Lv${monster.level}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // Bar HP dengan animasi
-          TweenAnimationBuilder<double>(
-            tween: Tween<double>(begin: 0.0, end: newHpPercent),
-            duration: const Duration(milliseconds: 800),
-            curve: Curves.easeOutCubic,
-            builder: (context, animatedValue, child) {
-              Color hpColor = animatedValue > 0.5
-                  ? Colors.green
-                  : (animatedValue > 0.2 ? Colors.orange : Colors.red);
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: animatedValue,
-                  backgroundColor: Colors.grey.shade300,
-                  color: hpColor,
-                  minHeight: 8,
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Text(
-              '$currentHp / $maxHp HP',
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-            ),
-          ),
-          const Divider(height: 12),
-          Row(
-            children: [
-              const Icon(
-                Icons.battery_charging_full,
-                size: 12,
-                color: Colors.teal,
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween<double>(
-                    begin: 0.0,
-                    end: monster.stamina > 0
-                        ? currentStamina / monster.stamina
-                        : 0.0,
-                  ),
-                  duration: const Duration(milliseconds: 800),
-                  curve: Curves.easeOutCubic,
-                  builder: (context, animatedValue, child) {
-                    return ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: animatedValue,
-                        backgroundColor: Colors.grey.shade300,
-                        color: Colors.teal,
-                        minHeight: 6,
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '$currentStamina / ${monster.stamina} SP',
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -3012,8 +2805,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
     return GestureDetector(
       onTap: () => _playTurn(move),
       child: Container(
-        width: 130,
-        height: 190, // Aspect ratio menyerupai kartu
+        width: 110,
+        height: 160, // Aspect ratio menyerupai kartu
+        margin: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(16), // Sedikit lebih bulat
@@ -3046,7 +2840,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                     'COST',
                     style: TextStyle(
                       color: textColor.withOpacity(0.7),
-                      fontSize: 10,
+                      fontSize: 9,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -3057,7 +2851,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                         : (move.cost > 0 ? '${move.cost}' : '+${-move.cost}'),
                     style: TextStyle(
                       color: textColor,
-                      fontSize: 22, // Ukuran font lebih besar
+                      fontSize: 18, // Ukuran font lebih besar
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -3076,7 +2870,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                     style: TextStyle(
                       color: textColor,
                       fontWeight: FontWeight.bold,
-                      fontSize: 18, // Sedikit lebih besar
+                      fontSize: 14, // Sedikit lebih besar
                       shadows: [
                         Shadow(
                           color: Colors.black.withOpacity(0.4),
@@ -3103,13 +2897,13 @@ class _WildBattleArenaState extends State<WildBattleArena>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(icon, color: textColor, size: 16),
+                  Icon(icon, color: textColor, size: 14),
                   const SizedBox(width: 6),
                   Text(
                     typeLabel,
                     style: TextStyle(
                       color: textColor,
-                      fontSize: 12,
+                      fontSize: 10,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -3133,8 +2927,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
       child: Opacity(
         opacity: outOfStock ? 0.5 : 1.0,
         child: Container(
-          width: 130,
-          height: 190,
+          width: 110,
+          height: 160,
+          margin: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
             color: bgColor,
             borderRadius: BorderRadius.circular(16),
@@ -3166,7 +2961,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                       'QTY',
                       style: TextStyle(
                         color: Colors.white70,
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -3175,7 +2970,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                       'X $quantity',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 22,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -3189,7 +2984,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                     children: [
                       Icon(
                         Icons.catching_pokemon,
-                        size: 48,
+                        size: 40,
                         color: Colors.white.withOpacity(0.9),
                       ),
                       const SizedBox(height: 8),
@@ -3201,7 +2996,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
-                            fontSize: 16,
+                            fontSize: 14,
                             shadows: [
                               Shadow(
                                 color: Colors.black.withOpacity(0.4),
@@ -3228,13 +3023,13 @@ class _WildBattleArenaState extends State<WildBattleArena>
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: const [
-                    Icon(Icons.business_center, color: Colors.white, size: 16),
+                    Icon(Icons.business_center, color: Colors.white, size: 14),
                     SizedBox(width: 6),
                     Text(
                       'ITEM',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 12,
+                        fontSize: 10,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -3260,9 +3055,9 @@ class _WildBattleArenaState extends State<WildBattleArena>
       child: Opacity(
         opacity: disabled ? 0.6 : 1.0,
         child: Container(
-          width: 130,
-          height: 190,
-          margin: const EdgeInsets.symmetric(horizontal: 6),
+          width: 110,
+          height: 160,
+          margin: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
             color: bgColor,
             borderRadius: BorderRadius.circular(16),
@@ -3294,7 +3089,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                       'LVL ${monster.level}',
                       style: const TextStyle(
                         color: Colors.white70,
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -3304,7 +3099,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                         color: isActive
                             ? Colors.amber
                             : (isDead ? Colors.red : Colors.white),
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -3318,7 +3113,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                     children: [
                       Icon(
                         _getElementIcon(monster.element),
-                        size: 48,
+                        size: 40,
                         color: Colors.white.withOpacity(0.9),
                       ),
                       const SizedBox(height: 8),
@@ -3332,7 +3127,7 @@ class _WildBattleArenaState extends State<WildBattleArena>
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                            fontSize: 12,
                             shadows: [
                               Shadow(
                                 color: Colors.black.withOpacity(0.4),
@@ -3366,18 +3161,19 @@ class _WildBattleArenaState extends State<WildBattleArena>
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    LinearProgressIndicator(
+                    SmoothProgressBar(
                       value: _partyHp[monster]! / monster.hp,
                       backgroundColor: Colors.black26,
-                      color: isDead ? Colors.red : Colors.green,
+                      baseColor: Colors.greenAccent,
                       minHeight: 6,
+                      isHealthBar: true,
                     ),
                     const SizedBox(height: 4),
                     Text(
                       '${_partyHp[monster]}/${monster.hp}',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -3460,7 +3256,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
     _clashController = AnimationController(
       vsync: this,
       duration: const Duration(
-        milliseconds: 1800,
+        milliseconds: 2500,
       ), // Diperlama untuk animasi garis clash
     );
     _myShakeController = AnimationController(
@@ -4105,6 +3901,40 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                     clipBehavior:
                         Clip.none, // Cegah garis putih terpotong batas luar
                     children: [
+                      // 🌟 BACKGROUND ARENA SESUNGGUHNYA 🌟
+                      Positioned.fill(
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            ClipPath(
+                              clipper: AsymmetricDiagonalClipper(
+                                isTop: true,
+                                progress: 1.0,
+                              ),
+                              child: Image.asset(
+                                'assets/images/battle_bg_tower.png', // Frame Atas
+                                fit: BoxFit.cover,
+                                alignment: Alignment(
+                                  -1.0,
+                                  1.0,
+                                ), // Bebas atur posisi
+                              ),
+                            ),
+                            ClipPath(
+                              clipper: AsymmetricDiagonalClipper(
+                                isTop: false,
+                                progress: 1.0,
+                              ),
+                              child: Image.asset(
+                                'assets/images/battle_bg_pvp.png', // Frame Bawah
+                                fit: BoxFit.cover,
+                                alignment:
+                                    Alignment.bottomCenter, // Bebas atur posisi
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                       // Animasi Clash Layar Diagonal
                       Positioned.fill(
                         child: LayoutBuilder(
@@ -4117,24 +3947,25 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                               animation: _clashController,
                               builder: (context, child) {
                                 final linearValue = _clashController.value;
-                                // 35% Waktu pertama: Meluncur sebagai persegi dari Atas & Bawah
                                 final slideProgress = Curves.easeOut.transform(
-                                  (linearValue / 0.35).clamp(0.0, 1.0),
+                                  (linearValue / 0.25).clamp(0.0, 1.0),
                                 );
 
-                                // 15% Waktu (0.35 - 0.50): Garis putih memanjang dari tengah
                                 final lineProgress = Curves.easeOut.transform(
-                                  ((linearValue - 0.35) / 0.15).clamp(0.0, 1.0),
+                                  ((linearValue - 0.25) / 0.10).clamp(0.0, 1.0),
                                 );
 
-                                // 50% Waktu sisanya (0.50 - 1.0): Membelah (morph) menjadi segitiga
                                 final morphProgress = Curves.easeOutBack
                                     .transform(
-                                      ((linearValue - 0.50) / 0.50).clamp(
+                                      ((linearValue - 0.35) / 0.35).clamp(
                                         0.0,
                                         1.0,
                                       ),
                                     );
+                                final fadeOutProgress = Curves.easeIn.transform(
+                                  ((linearValue - 0.70) / 0.30).clamp(0.0, 1.0),
+                                );
+                                final opacity = 1.0 - fadeOutProgress;
 
                                 final currentAvgYOffset =
                                     boxSize.height * 0.05 * morphProgress;
@@ -4161,71 +3992,81 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                                   clipBehavior: Clip.none, // Izinkan Overflow
                                   children: [
                                     // Musuh (Top)
-                                    Transform.translate(
-                                      offset: Offset(0, slideYTop),
-                                      child: ClipPath(
-                                        clipper: AsymmetricDiagonalClipper(
-                                          isTop: true,
-                                          progress: morphProgress,
-                                        ),
-                                        child: Container(
-                                          color: _getElementColor(
-                                            _getElement(enemyData['element']),
-                                          ),
-                                          child: Stack(
-                                            children: [
-                                              Positioned(
-                                                top: -40,
-                                                right: -40,
-                                                child: Icon(
-                                                  _getElementIcon(
-                                                    _getElement(
-                                                      enemyData['element'],
-                                                    ),
-                                                  ),
-                                                  size: 250,
-                                                  color: Colors.white
-                                                      .withOpacity(0.1),
+                                    if (opacity > 0.0)
+                                      Opacity(
+                                        opacity: opacity,
+                                        child: Transform.translate(
+                                          offset: Offset(0, slideYTop),
+                                          child: ClipPath(
+                                            clipper: AsymmetricDiagonalClipper(
+                                              isTop: true,
+                                              progress: morphProgress,
+                                            ),
+                                            child: Container(
+                                              color: _getElementColor(
+                                                _getElement(
+                                                  enemyData['element'],
                                                 ),
                                               ),
-                                            ],
+                                              child: Stack(
+                                                children: [
+                                                  Positioned(
+                                                    top: -40,
+                                                    right: -40,
+                                                    child: Icon(
+                                                      _getElementIcon(
+                                                        _getElement(
+                                                          enemyData['element'],
+                                                        ),
+                                                      ),
+                                                      size: 250,
+                                                      color: Colors.white
+                                                          .withOpacity(0.1),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ),
-                                    ),
                                     // Pemain (Bottom)
-                                    Transform.translate(
-                                      offset: Offset(0, slideYBottom),
-                                      child: ClipPath(
-                                        clipper: AsymmetricDiagonalClipper(
-                                          isTop: false,
-                                          progress: morphProgress,
-                                        ),
-                                        child: Container(
-                                          color: _getElementColor(
-                                            _getElement(myData['element']),
-                                          ),
-                                          child: Stack(
-                                            children: [
-                                              Positioned(
-                                                bottom: -40,
-                                                left: -40,
-                                                child: Icon(
-                                                  _getElementIcon(
-                                                    _getElement(
-                                                      myData['element'],
+                                    if (opacity > 0.0)
+                                      Opacity(
+                                        opacity: opacity,
+                                        child: Transform.translate(
+                                          offset: Offset(0, slideYBottom),
+                                          child: ClipPath(
+                                            clipper: AsymmetricDiagonalClipper(
+                                              isTop: false,
+                                              progress: morphProgress,
+                                            ),
+                                            child: Container(
+                                              color: _getElementColor(
+                                                _getElement(myData['element']),
+                                              ),
+                                              child: Stack(
+                                                children: [
+                                                  Positioned(
+                                                    bottom: -40,
+                                                    left: -40,
+                                                    child: Icon(
+                                                      _getElementIcon(
+                                                        _getElement(
+                                                          myData['element'],
+                                                        ),
+                                                      ),
+                                                      size: 250,
+                                                      color: Colors.white
+                                                          .withOpacity(0.1),
                                                     ),
                                                   ),
-                                                  size: 250,
-                                                  color: Colors.white
-                                                      .withOpacity(0.1),
-                                                ),
+                                                ],
                                               ),
-                                            ],
+                                            ),
                                           ),
                                         ),
                                       ),
-                                    ),
                                     // Garis Putih (Clash Line)
                                     if (lineProgress > 0)
                                       Center(
@@ -4628,9 +4469,9 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
       child: Opacity(
         opacity: disabled ? 0.6 : 1.0,
         child: Container(
-          width: 130,
-          height: 190,
-          margin: const EdgeInsets.symmetric(horizontal: 6),
+          width: 110,
+          height: 160,
+          margin: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
             color: bgColor,
             borderRadius: BorderRadius.circular(16),
@@ -4662,7 +4503,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                       'LVL ${monster.level}',
                       style: const TextStyle(
                         color: Colors.white70,
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -4672,7 +4513,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                         color: isActive
                             ? Colors.amber
                             : (isDead ? Colors.red : Colors.white),
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -4686,7 +4527,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                     children: [
                       Icon(
                         _getElementIcon(monster.element),
-                        size: 48,
+                        size: 40,
                         color: Colors.white.withOpacity(0.9),
                       ),
                       const SizedBox(height: 8),
@@ -4700,7 +4541,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                            fontSize: 12,
                             shadows: [
                               Shadow(
                                 color: Colors.black.withOpacity(0.4),
@@ -4730,22 +4571,23 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                       'HP',
                       style: TextStyle(
                         color: Colors.white70,
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    LinearProgressIndicator(
+                    SmoothProgressBar(
                       value: _partyHp[monster]! / monster.hp,
                       backgroundColor: Colors.black26,
-                      color: isDead ? Colors.red : Colors.green,
+                      baseColor: Colors.greenAccent,
                       minHeight: 6,
+                      isHealthBar: true,
                     ),
                     const SizedBox(height: 4),
                     Text(
                       '${_partyHp[monster]}/${monster.hp}',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -4787,8 +4629,9 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
         : Colors.white;
 
     return Container(
-      width: 130,
-      height: 190,
+      width: 110,
+      height: 160,
+      margin: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(16),
@@ -4820,7 +4663,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                   'COST',
                   style: TextStyle(
                     color: textColor.withOpacity(0.7),
-                    fontSize: 10,
+                    fontSize: 9,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -4831,7 +4674,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                       : (move.cost > 0 ? '${move.cost}' : '+${-move.cost}'),
                   style: TextStyle(
                     color: textColor,
-                    fontSize: 22,
+                    fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -4848,7 +4691,7 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
                   style: TextStyle(
                     color: textColor,
                     fontWeight: FontWeight.bold,
-                    fontSize: 18,
+                    fontSize: 14,
                     shadows: [
                       Shadow(
                         color: Colors.black.withOpacity(0.4),
@@ -4873,13 +4716,13 @@ class _PvPBattleArenaState extends State<PvPBattleArena>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, color: textColor, size: 16),
+                Icon(icon, color: textColor, size: 14),
                 const SizedBox(width: 6),
                 Text(
                   typeLabel,
                   style: TextStyle(
                     color: textColor,
-                    fontSize: 12,
+                    fontSize: 10,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -4998,7 +4841,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
     );
     _clashController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1800),
+      duration: const Duration(milliseconds: 2500),
     );
     _playerShakeController = AnimationController(
       vsync: this,
@@ -5780,6 +5623,40 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
+                  // 🌟 BACKGROUND ARENA SESUNGGUHNYA 🌟
+                  Positioned.fill(
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        ClipPath(
+                          clipper: AsymmetricDiagonalClipper(
+                            isTop: true,
+                            progress: 1.0,
+                          ),
+                          child: Image.asset(
+                            'assets/images/battle_bg_wild.png', // Frame Atas
+                            fit: BoxFit.cover,
+                            alignment: Alignment(
+                              -1.0,
+                              1.0,
+                            ), // Bebas atur posisi
+                          ),
+                        ),
+                        ClipPath(
+                          clipper: AsymmetricDiagonalClipper(
+                            isTop: false,
+                            progress: 1.0,
+                          ),
+                          child: Image.asset(
+                            'assets/images/battle_bg_tower.png', // Frame Bawah
+                            fit: BoxFit.cover,
+                            alignment:
+                                Alignment.bottomCenter, // Bebas atur posisi
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   // Animasi Clash
                   Positioned.fill(
                     child: LayoutBuilder(
@@ -5793,14 +5670,18 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                           builder: (context, child) {
                             final linearValue = _clashController.value;
                             final slideProgress = Curves.easeOut.transform(
-                              (linearValue / 0.35).clamp(0.0, 1.0),
+                              (linearValue / 0.25).clamp(0.0, 1.0),
                             );
                             final lineProgress = Curves.easeOut.transform(
-                              ((linearValue - 0.35) / 0.15).clamp(0.0, 1.0),
+                              ((linearValue - 0.25) / 0.10).clamp(0.0, 1.0),
                             );
                             final morphProgress = Curves.easeOutBack.transform(
-                              ((linearValue - 0.50) / 0.50).clamp(0.0, 1.0),
+                              ((linearValue - 0.35) / 0.35).clamp(0.0, 1.0),
                             );
+                            final fadeOutProgress = Curves.easeIn.transform(
+                              ((linearValue - 0.70) / 0.30).clamp(0.0, 1.0),
+                            );
+                            final opacity = 1.0 - fadeOutProgress;
 
                             final currentAvgYOffset =
                                 boxSize.height * 0.05 * morphProgress;
@@ -5823,64 +5704,71 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                               fit: StackFit.expand,
                               clipBehavior: Clip.none,
                               children: [
-                                Transform.translate(
-                                  offset: Offset(0, slideYTop),
-                                  child: ClipPath(
-                                    clipper: AsymmetricDiagonalClipper(
-                                      isTop: true,
-                                      progress: morphProgress,
-                                    ),
-                                    child: Container(
-                                      color: _activeEnemyMonster.elementColor,
-                                      child: Stack(
-                                        children: [
-                                          Positioned(
-                                            top: -40,
-                                            right: -40,
-                                            child: Icon(
-                                              _getElementIcon(
-                                                _activeEnemyMonster.element,
+                                if (opacity > 0.0)
+                                  Opacity(
+                                    opacity: opacity,
+                                    child: Transform.translate(
+                                      offset: Offset(0, slideYTop),
+                                      child: ClipPath(
+                                        clipper: AsymmetricDiagonalClipper(
+                                          isTop: true,
+                                          progress: morphProgress,
+                                        ),
+                                        child: Container(
+                                          color:
+                                              _activeEnemyMonster.elementColor,
+                                          child: Stack(
+                                            children: [
+                                              Positioned(
+                                                top: -40,
+                                                right: -40,
+                                                child: Icon(
+                                                  _getElementIcon(
+                                                    _activeEnemyMonster.element,
+                                                  ),
+                                                  size: 250,
+                                                  color: Colors.white
+                                                      .withOpacity(0.1),
+                                                ),
                                               ),
-                                              size: 250,
-                                              color: Colors.white.withOpacity(
-                                                0.1,
-                                              ),
-                                            ),
+                                            ],
                                           ),
-                                        ],
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                Transform.translate(
-                                  offset: Offset(0, slideYBottom),
-                                  child: ClipPath(
-                                    clipper: AsymmetricDiagonalClipper(
-                                      isTop: false,
-                                      progress: morphProgress,
-                                    ),
-                                    child: Container(
-                                      color: _activeMonster.elementColor,
-                                      child: Stack(
-                                        children: [
-                                          Positioned(
-                                            bottom: -40,
-                                            left: -40,
-                                            child: Icon(
-                                              _getElementIcon(
-                                                _activeMonster.element,
+                                if (opacity > 0.0)
+                                  Opacity(
+                                    opacity: opacity,
+                                    child: Transform.translate(
+                                      offset: Offset(0, slideYBottom),
+                                      child: ClipPath(
+                                        clipper: AsymmetricDiagonalClipper(
+                                          isTop: false,
+                                          progress: morphProgress,
+                                        ),
+                                        child: Container(
+                                          color: _activeMonster.elementColor,
+                                          child: Stack(
+                                            children: [
+                                              Positioned(
+                                                bottom: -40,
+                                                left: -40,
+                                                child: Icon(
+                                                  _getElementIcon(
+                                                    _activeMonster.element,
+                                                  ),
+                                                  size: 250,
+                                                  color: Colors.white
+                                                      .withOpacity(0.1),
+                                                ),
                                               ),
-                                              size: 250,
-                                              color: Colors.white.withOpacity(
-                                                0.1,
-                                              ),
-                                            ),
+                                            ],
                                           ),
-                                        ],
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
                                 if (lineProgress > 0)
                                   Center(
                                     child: Transform.translate(
@@ -6233,8 +6121,9 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
     return GestureDetector(
       onTap: () => _playTurn(move),
       child: Container(
-        width: 130,
-        height: 190,
+        width: 110,
+        height: 160,
+        margin: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(16),
@@ -6266,7 +6155,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                     'COST',
                     style: TextStyle(
                       color: textColor.withOpacity(0.7),
-                      fontSize: 10,
+                      fontSize: 9,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -6277,7 +6166,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                         : (move.cost > 0 ? '${move.cost}' : '+${-move.cost}'),
                     style: TextStyle(
                       color: textColor,
-                      fontSize: 22,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -6294,7 +6183,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                     style: TextStyle(
                       color: textColor,
                       fontWeight: FontWeight.bold,
-                      fontSize: 18,
+                      fontSize: 14,
                       shadows: [
                         Shadow(
                           color: Colors.black.withOpacity(0.4),
@@ -6319,13 +6208,13 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(icon, color: textColor, size: 16),
+                  Icon(icon, color: textColor, size: 14),
                   const SizedBox(width: 6),
                   Text(
                     typeLabel,
                     style: TextStyle(
                       color: textColor,
-                      fontSize: 12,
+                      fontSize: 10,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -6349,9 +6238,9 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
       child: Opacity(
         opacity: disabled ? 0.6 : 1.0,
         child: Container(
-          width: 130,
-          height: 190,
-          margin: const EdgeInsets.symmetric(horizontal: 6),
+          width: 110,
+          height: 160,
+          margin: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
             color: bgColor,
             borderRadius: BorderRadius.circular(16),
@@ -6383,7 +6272,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                       'LVL ${monster.level}',
                       style: const TextStyle(
                         color: Colors.white70,
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -6393,7 +6282,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                         color: isActive
                             ? Colors.amber
                             : (isDead ? Colors.red : Colors.white),
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -6407,7 +6296,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                     children: [
                       Icon(
                         _getElementIcon(monster.element),
-                        size: 48,
+                        size: 40,
                         color: Colors.white.withOpacity(0.9),
                       ),
                       const SizedBox(height: 8),
@@ -6421,7 +6310,7 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                            fontSize: 12,
                             shadows: [
                               Shadow(
                                 color: Colors.black.withOpacity(0.4),
@@ -6451,22 +6340,23 @@ class _InfiniteTowerBattleArenaState extends State<InfiniteTowerBattleArena>
                       'HP',
                       style: TextStyle(
                         color: Colors.white70,
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    LinearProgressIndicator(
+                    SmoothProgressBar(
                       value: _partyHp[monster]! / monster.hp,
                       backgroundColor: Colors.black26,
-                      color: isDead ? Colors.red : Colors.green,
+                      baseColor: Colors.greenAccent,
                       minHeight: 6,
+                      isHealthBar: true,
                     ),
                     const SizedBox(height: 4),
                     Text(
                       '${_partyHp[monster]}/${monster.hp}',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.bold,
                       ),
                     ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:monster_battle_game/main.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'dart:math' as math;
 
 class PartyScreen extends StatefulWidget {
   final List<Monster> party;
@@ -13,8 +14,8 @@ class PartyScreen extends StatefulWidget {
 }
 
 class _PartyScreenState extends State<PartyScreen> {
-  Monster? _selectedMonster;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  Monster? _selectedMonster;
 
   @override
   void initState() {
@@ -46,6 +47,7 @@ class _PartyScreenState extends State<PartyScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
+      backgroundColor: const Color(0xFFF4F7FC), // Soft blue-grey background
       drawer: AppDrawer(
         party: widget.party,
         onPartyUpdated: () {
@@ -99,24 +101,37 @@ class _PartyScreenState extends State<PartyScreen> {
             children: [
               Row(
                 children: [
-                  // Tombol kembali hanya muncul di tampilan mobile jika ini adalah root
-                  // Jika tidak, AppBar di MonsterDetailScreen yang akan menanganinya.
                   if (Navigator.canPop(context))
                     IconButton(
                       icon: const Icon(Icons.arrow_back_ios_new_rounded),
                       onPressed: () => Navigator.pop(context),
                     ),
                   if (!Navigator.canPop(context))
-                    IconButton(
-                      icon: const Icon(Icons.menu, color: Colors.black87),
-                      onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.menu, color: Colors.black87),
+                        onPressed: () =>
+                            _scaffoldKey.currentState?.openDrawer(),
+                      ),
                     ),
+                  const SizedBox(width: 12),
                   const Text(
                     'My Party',
                     style: TextStyle(
                       fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF2D3142),
                     ),
                   ),
                 ],
@@ -130,32 +145,35 @@ class _PartyScreenState extends State<PartyScreen> {
                       final gold = snapshot.data ?? 0;
                       return Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
+                          horizontal: 14,
+                          vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.amber.shade100,
+                          color: Colors.white,
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: Colors.amber.shade400,
-                            width: 1.5,
-                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
+                            const Icon(
                               Icons.monetization_on,
-                              color: Colors.amber.shade700,
-                              size: 20,
+                              color: Colors.amber,
+                              size: 18,
                             ),
                             const SizedBox(width: 6),
                             Text(
                               '$gold',
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontWeight: FontWeight.bold,
-                                color: Colors.amber.shade900,
-                                fontSize: 16,
+                                color: Colors.black87,
+                                fontSize: 14,
                               ),
                             ),
                           ],
@@ -164,40 +182,52 @@ class _PartyScreenState extends State<PartyScreen> {
                     },
                   ),
                   const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.logout, color: Colors.redAccent),
-                    tooltip: 'Keluar (Logout)',
-                    onPressed: () async {
-                      // Menampilkan dialog konfirmasi sebelum logout
-                      showDialog(
-                        context: context,
-                        builder: (dialogContext) => AlertDialog(
-                          title: const Text('Konfirmasi Logout'),
-                          content: const Text(
-                            'Apakah kamu yakin ingin keluar dari akun ini?',
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(dialogContext),
-                              child: const Text('Batal'),
-                            ),
-                            ElevatedButton(
-                              onPressed: () async {
-                                Navigator.pop(dialogContext);
-                                await SaveManager.clearAllData(); // Hapus cache lokal
-                                await FirebaseAuth.instance.signOut();
-                                await GoogleSignIn().signOut();
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.redAccent,
-                                foregroundColor: Colors.white,
-                              ),
-                              child: const Text('Keluar'),
-                            ),
-                          ],
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
                         ),
-                      );
-                    },
+                      ],
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.logout, color: Colors.redAccent),
+                      tooltip: 'Keluar (Logout)',
+                      onPressed: () async {
+                        showDialog(
+                          context: context,
+                          builder: (dialogContext) => AlertDialog(
+                            title: const Text('Konfirmasi Logout'),
+                            content: const Text(
+                              'Apakah kamu yakin ingin keluar dari akun ini?',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(dialogContext),
+                                child: const Text('Batal'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () async {
+                                  Navigator.pop(dialogContext);
+                                  await SaveManager.clearAllData();
+                                  await FirebaseAuth.instance.signOut();
+                                  await GoogleSignIn().signOut();
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.redAccent,
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: const Text('Keluar'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -219,7 +249,7 @@ class _PartyScreenState extends State<PartyScreen> {
                   margin: const EdgeInsets.symmetric(vertical: 6),
                   clipBehavior: Clip.antiAlias,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(16),
                     side: isSelected
                         ? const BorderSide(color: Colors.white, width: 2)
                         : BorderSide.none,
@@ -294,7 +324,7 @@ class _PartyScreenState extends State<PartyScreen> {
                                         ),
                                       ),
                                       Text(
-                                        'Lvl ${monster.level} - ${monster.element.name}',
+                                        'Lv. ${monster.level} - ${monster.element.name}',
                                         style: TextStyle(
                                           color: Colors.white.withOpacity(0.9),
                                           fontSize: 12,
@@ -346,7 +376,6 @@ class _PartyScreenState extends State<PartyScreen> {
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              // Bar EXP
                               Row(
                                 children: [
                                   Text(
@@ -391,52 +420,33 @@ class _PartyScreenState extends State<PartyScreen> {
 
   /// Membangun panel detail di sisi kanan (hanya untuk desktop).
   Widget _buildDetailPane() {
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.all(16.0),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: _selectedMonster == null ? Colors.black12 : Colors.white30,
-            width: 2,
-          ),
-          color: _selectedMonster == null ? Colors.white : null,
-          gradient: _selectedMonster == null
-              ? null
-              : LinearGradient(
-                  colors: [
-                    _selectedMonster!.elementColor.withOpacity(0.9),
-                    _selectedMonster!.elementColor.withOpacity(0.6),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(40), // Matches Premium view
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
             ),
           ],
         ),
-        child: _selectedMonster == null
-            ? const Padding(
-                padding: EdgeInsets.all(40.0),
-                child: Center(
-                  child: Text('Pilih monster untuk melihat detail.'),
-                ),
-              )
-            : ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: MonsterDetailView(monster: _selectedMonster!),
-              ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(40),
+          child: _selectedMonster == null
+              ? const Center(child: Text('Pilih monster untuk melihat detail.'))
+              : PremiumMonsterView(monster: _selectedMonster!),
+        ),
       ),
     );
   }
 }
 
-/// Halaman baru yang didedikasikan untuk menampilkan detail monster di mobile.
+/// Halaman yang didedikasikan untuk menampilkan detail monster di HP (mobile).
 class MonsterDetailScreen extends StatelessWidget {
   final Monster monster;
 
@@ -445,36 +455,455 @@ class MonsterDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Detail Monster'),
-        backgroundColor: monster.elementColor,
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              monster.elementColor.withOpacity(0.9),
-              monster.elementColor.withOpacity(0.6),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+      backgroundColor: const Color(0xFFF4F7FC),
+      body: Stack(
+        children: [
+          PremiumMonsterView(monster: monster),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ),
           ),
-        ),
-        child: SingleChildScrollView(
-          child: MonsterDetailView(monster: monster),
-        ),
+        ],
       ),
     );
   }
 }
 
-/// Widget yang dapat digunakan kembali untuk menampilkan detail monster.
-class MonsterDetailView extends StatelessWidget {
+// ============================================================================
+// WIDGET: PREMIUM MONSTER VIEW (Soft Neumorphism Style)
+// ============================================================================
+class PremiumMonsterView extends StatefulWidget {
   final Monster monster;
+  const PremiumMonsterView({super.key, required this.monster});
 
-  const MonsterDetailView({super.key, required this.monster});
+  @override
+  State<PremiumMonsterView> createState() => _PremiumMonsterViewState();
+}
+
+class _PremiumMonsterViewState extends State<PremiumMonsterView>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Gunakan tinggi dari parent (constraints) bukan layar keseluruhan
+        // Agar widget ini fleksibel saat digunakan di Desktop Split Screen
+        final viewHeight = constraints.maxHeight;
+
+        return Stack(
+          children: [
+            // 1. Organic Background Header
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: viewHeight * 0.42,
+              child: ClipPath(
+                clipper: OrganicHeaderClipper(),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        widget.monster.elementColor.withOpacity(0.9),
+                        widget.monster.elementColor.withOpacity(0.6),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: Stack(
+                    children: [
+                      // Mockup Background App Screens / Shapes
+                      Positioned(
+                        top: -50,
+                        right: -30,
+                        child: Transform.rotate(
+                          angle: math.pi / 6,
+                          child: Container(
+                            width: 150,
+                            height: 250,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: -20,
+                        left: -40,
+                        child: Transform.rotate(
+                          angle: -math.pi / 5,
+                          child: Container(
+                            width: 200,
+                            height: 120,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // 2. White Content Card (Overlapping)
+            Positioned(
+              top: viewHeight * 0.38,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(40),
+                    topRight: Radius.circular(40),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 30,
+                      offset: const Offset(0, -10),
+                    ),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const SizedBox(height: 50), // Spacing for floating image
+                      // Monster Name & Element Badge
+                      Text(
+                        widget.monster.name,
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF2D3142),
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: widget.monster.elementColor.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _getElementIcon(widget.monster.element),
+                              color: widget.monster.elementColor,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              widget.monster.element.name.toUpperCase(),
+                              style: TextStyle(
+                                color: widget.monster.elementColor,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
+                                letterSpacing: 1.0,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      // Level & EXP Minimalist Bar
+                      Row(
+                        children: [
+                          Text(
+                            'Lv. ${widget.monster.level}',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF2D3142),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: LinearProgressIndicator(
+                                    value:
+                                        widget.monster.currentExp /
+                                        widget.monster.expToNextLevel,
+                                    backgroundColor: const Color(0xFFF0F4F8),
+                                    color: Colors.blueAccent.shade100,
+                                    minHeight: 12,
+                                  ),
+                                ),
+                                Text(
+                                  '${widget.monster.currentExp} / ${widget.monster.expToNextLevel} EXP',
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black54,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      // Tabs (Stats / Moves)
+                      Container(
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: const Color(
+                            0xFFF4F7FC,
+                          ), // Soft Neumorphic Inset
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                        child: TabBar(
+                          controller: _tabController,
+                          indicatorSize: TabBarIndicatorSize.tab,
+                          dividerColor: Colors.transparent,
+                          indicator: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(25),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.04),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          labelColor: widget.monster.elementColor,
+                          unselectedLabelColor: Colors.grey.shade500,
+                          labelStyle: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                          tabs: const [
+                            Tab(text: 'Stats'),
+                            Tab(text: 'Moves'),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      // Tab Content
+                      Expanded(
+                        child: TabBarView(
+                          controller: _tabController,
+                          children: [_buildStatsTab(), _buildMovesTab()],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // 3. Floating Monster Illustration
+            Positioned(
+              top: viewHeight * 0.16,
+              left: 0,
+              right: 0,
+              height: viewHeight * 0.28,
+              child: Hero(
+                tag: widget.monster.name,
+                child: Image.asset(
+                  widget.monster.imagePath,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildStatsTab() {
+    return ListView(
+      padding: const EdgeInsets.only(top: 8.0, bottom: 24.0),
+      children: [
+        PremiumStatBar(
+          label: 'HP',
+          value: widget.monster.hp,
+          maxValue: 300,
+          color: Colors.green,
+        ),
+        PremiumStatBar(
+          label: 'Attack',
+          value: widget.monster.attack,
+          maxValue: 200,
+          color: Colors.redAccent,
+        ),
+        PremiumStatBar(
+          label: 'Defense',
+          value: widget.monster.defense,
+          maxValue: 200,
+          color: Colors.orange,
+        ),
+        PremiumStatBar(
+          label: 'Speed',
+          value: widget.monster.speed,
+          maxValue: 200,
+          color: Colors.lightBlue,
+        ),
+        PremiumStatBar(
+          label: 'Stamina',
+          value: widget.monster.stamina,
+          maxValue: 200,
+          color: Colors.teal,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMovesTab() {
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 8.0, bottom: 24.0),
+      itemCount: widget.monster.moves.length,
+      itemBuilder: (context, index) {
+        final move = widget.monster.moves[index];
+        Color iconColor;
+        IconData icon;
+
+        switch (move.type) {
+          case MoveType.normal:
+            iconColor = Colors.grey.shade600;
+            icon = Icons.sports_mma;
+            break;
+          case MoveType.elemental:
+            iconColor = widget.monster.elementColor;
+            icon = _getElementIcon(widget.monster.element);
+            break;
+          case MoveType.special:
+            iconColor = Colors.purple.shade400;
+            icon = Icons.auto_awesome;
+            break;
+          case MoveType.recover:
+            iconColor = Colors.teal.shade400;
+            icon = Icons.healing;
+            break;
+        }
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFE2E8F0).withOpacity(0.6),
+                blurRadius: 15,
+                offset: const Offset(5, 5),
+              ),
+              const BoxShadow(
+                color: Colors.white,
+                blurRadius: 15,
+                offset: Offset(-5, -5),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: iconColor, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      move.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Color(0xFF2D3142),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      move.effect ?? move.type.name.toUpperCase(),
+                      style: TextStyle(
+                        color: Colors.grey.shade500,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'PWR ${move.power}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                      color: Color(0xFF2D3142),
+                    ),
+                  ),
+                  Text(
+                    move.cost > 0 ? 'CST ${move.cost}' : 'CST +${-move.cost}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      color: move.cost > 0
+                          ? Colors.orangeAccent
+                          : Colors.greenAccent,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   IconData _getElementIcon(MonsterElement element) {
     switch (element) {
@@ -492,394 +921,136 @@ class MonsterDetailView extends StatelessWidget {
         return Icons.flutter_dash;
     }
   }
+}
 
-  MonsterElement _getStrongAgainst(MonsterElement element) {
-    switch (element) {
-      case MonsterElement.Api:
-        return MonsterElement.Tumbuhan;
-      case MonsterElement.Air:
-        return MonsterElement.Api;
-      case MonsterElement.Tumbuhan:
-        return MonsterElement.Air;
-      case MonsterElement.Listrik:
-        return MonsterElement.Air;
-      case MonsterElement.Tanah:
-        return MonsterElement.Listrik;
-      case MonsterElement.Terbang:
-        return MonsterElement.Tumbuhan;
-    }
-  }
+// ============================================================================
+// WIDGET: PREMIUM STAT BAR
+// ============================================================================
+class PremiumStatBar extends StatelessWidget {
+  final String label;
+  final num value;
+  final num maxValue;
+  final Color color;
 
-  MonsterElement _getWeakAgainst(MonsterElement element) {
-    switch (element) {
-      case MonsterElement.Api:
-        return MonsterElement.Air;
-      case MonsterElement.Air:
-        return MonsterElement.Tumbuhan;
-      case MonsterElement.Tumbuhan:
-        return MonsterElement.Api;
-      case MonsterElement.Listrik:
-        return MonsterElement.Tanah;
-      case MonsterElement.Tanah:
-        return MonsterElement.Tumbuhan;
-      case MonsterElement.Terbang:
-        return MonsterElement.Listrik;
-    }
-  }
+  const PremiumStatBar({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.maxValue,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(32.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header Box: Icon, Nama & Level
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Icon(
-                  _getElementIcon(monster.element),
-                  color: monster.elementColor,
-                  size: 36,
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Text(
-                    monster.name,
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ),
-                Text(
-                  'Lvl ${monster.level}',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: Colors.black54,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 32),
-          // Bagian tengah: Gambar dan Info Elemen
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Placeholder Gambar
-              Container(
-                width: 150,
-                height: 150,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white24, width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 20,
-                      spreadRadius: 5,
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: Text(
-                    'Gbr.\n${monster.name}',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 24),
-              // Kolom Info Elemen
-              Expanded(child: _buildMinimalMatchupInfo(monster)),
-            ],
-          ),
-          const SizedBox(height: 32),
-          // Row untuk Statistik (Kiri) dan Info Elemen (Kanan)
-          // Layout responsif untuk Statistik dan Moveset
-          LayoutBuilder(
-            builder: (context, constraints) {
-              // Ganti ke mode vertikal jika layar sangat sempit
-              bool isNarrow = constraints.maxWidth < 550;
-
-              if (isNarrow) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildStatsColumn(monster),
-                    const SizedBox(height: 32),
-                    _buildMovesetColumn(monster),
-                  ],
-                );
-              } else {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: _buildStatsColumn(monster)),
-                    const SizedBox(width: 32),
-                    Expanded(child: _buildMovesetColumn(monster)),
-                  ],
-                );
-              }
-            },
-          ),
-          const SizedBox(height: 48), // Padding tambahan di bagian bawah
-        ],
-      ),
-    );
-  }
-
-  // Widget helper untuk kolom statistik
-  Widget _buildStatsColumn(Monster monster) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Statistik',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 20),
-        _buildStatBox(
-          Icons.favorite,
-          'HP',
-          monster.hp.toString(),
-          Colors.green,
-        ),
-        _buildStatBox(
-          Icons.flash_on,
-          'Attack',
-          monster.attack.toStringAsFixed(1),
-          Colors.orange,
-        ),
-        _buildStatBox(
-          Icons.shield,
-          'Defense',
-          monster.defense.toStringAsFixed(1),
-          Colors.blueGrey,
-        ),
-        _buildStatBox(
-          Icons.battery_charging_full,
-          'Stamina',
-          monster.stamina.toString(),
-          Colors.teal,
-        ),
-        _buildStatBox(
-          Icons.speed,
-          'Speed',
-          monster.speed.toString(),
-          Colors.blue,
-        ),
-      ],
-    );
-  }
-
-  // Widget helper untuk kolom moveset
-  Widget _buildMovesetColumn(Monster monster) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Moveset',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 20),
-        _buildMovesetBox(monster),
-      ],
-    );
-  }
-
-  // Widget kontainer untuk setiap poin statistik
-  Widget _buildStatBox(IconData icon, String label, String value, Color color) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white24),
-      ),
+      padding: const EdgeInsets.only(bottom: 18.0),
       child: Row(
         children: [
-          Icon(icon, color: Colors.white, size: 22),
-          const SizedBox(width: 12),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontWeight: FontWeight.w600,
+          SizedBox(
+            width: 65,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Colors.grey.shade500,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                letterSpacing: 0.5,
+              ),
             ),
           ),
-          const Spacer(),
-          Text(
-            value,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-              color: Colors.white,
+          SizedBox(
+            width: 40,
+            child: Text(
+              value.toInt().toString(),
+              style: const TextStyle(
+                color: Color(0xFF2D3142),
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+              ),
+            ),
+          ),
+          Expanded(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(
+                begin: 0,
+                end: (value / maxValue).toDouble(),
+              ),
+              duration: const Duration(milliseconds: 1200),
+              curve: Curves.easeOutCubic,
+              builder: (context, val, child) {
+                return Container(
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0F4F8), // Soft groove
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  alignment: Alignment.centerLeft,
+                  child: FractionallySizedBox(
+                    widthFactor: val.clamp(0.0, 1.0),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [color.withOpacity(0.6), color],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: color.withOpacity(0.4),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  // Widget minimalis untuk info keunggulan/kelemahan elemen
-  Widget _buildMinimalMatchupInfo(Monster monster) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Info Elemen',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: [
-            // Strong against
-            const Icon(
-              Icons.keyboard_double_arrow_up,
-              color: Colors.white,
-              size: 24,
-            ),
-            const SizedBox(width: 8),
-            Icon(
-              _getElementIcon(_getStrongAgainst(monster.element)),
-              color: Colors.white,
-              size: 32,
-            ),
-            const SizedBox(width: 24),
-            // Weak against
-            const Icon(
-              Icons.keyboard_double_arrow_down,
-              color: Colors.white,
-              size: 24,
-            ),
-            const SizedBox(width: 8),
-            Icon(
-              _getElementIcon(_getWeakAgainst(monster.element)),
-              color: Colors.white,
-              size: 32,
-            ),
-          ],
-        ),
-      ],
+// ============================================================================
+// CLIPPER: ORGANIC HEADER CLIPPER
+// ============================================================================
+class OrganicHeaderClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    var path = Path();
+    path.lineTo(0, size.height - 40);
+
+    var firstControlPoint = Offset(size.width / 4, size.height);
+    var firstEndPoint = Offset(size.width / 2, size.height - 30);
+    path.quadraticBezierTo(
+      firstControlPoint.dx,
+      firstControlPoint.dy,
+      firstEndPoint.dx,
+      firstEndPoint.dy,
     );
+
+    var secondControlPoint = Offset(
+      size.width - (size.width / 4),
+      size.height - 80,
+    );
+    var secondEndPoint = Offset(size.width, size.height - 40);
+    path.quadraticBezierTo(
+      secondControlPoint.dx,
+      secondControlPoint.dy,
+      secondEndPoint.dx,
+      secondEndPoint.dy,
+    );
+
+    path.lineTo(size.width, 0);
+    path.close();
+
+    return path;
   }
 
-  // Widget daftar Moveset dengan kotak-kotak 3D
-  Widget _buildMovesetBox(Monster monster) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final itemWidth =
-            (constraints.maxWidth - 16) / 2; // Mengatur 2 kolom grid
-        return Wrap(
-          spacing: 16,
-          runSpacing: 16,
-          children: monster.moves.map((move) {
-            Color bgColor;
-            Color textColor;
-            IconData icon;
-
-            // Menentukan styling berdasarkan tipe move
-            switch (move.type) {
-              case MoveType.normal:
-                bgColor = Colors.grey.shade200;
-                textColor = Colors.black87;
-                icon = Icons.sports_mma; // Ikon punch
-                break;
-              case MoveType.elemental:
-                bgColor = monster.elementColor;
-                textColor = Colors.white;
-                icon = _getElementIcon(monster.element); // Ikon elemen monster
-                break;
-              case MoveType.special:
-                bgColor = Colors.purple.shade400;
-                textColor = Colors.white;
-                icon = Icons.auto_awesome; // Ikon bintang/special
-                break;
-              case MoveType.recover:
-                bgColor = Colors.teal.shade300;
-                textColor = Colors.white;
-                icon = Icons.healing;
-                break;
-            }
-
-            return Container(
-              width: itemWidth,
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-              decoration: BoxDecoration(
-                color: bgColor,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  // Shadow lembut untuk kedalaman (Blur)
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                  // Efek solid 3D timbul (Tanpa Blur)
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 0,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, color: textColor, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      move.name,
-                      style: TextStyle(
-                        color: textColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
-        );
-      },
-    );
-  }
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
 }
